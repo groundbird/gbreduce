@@ -30,12 +30,44 @@ def read_rhea_header(fname):
 	# 	pass
 	return time , data
 
+def read_rhea_swp_data(fname, length=None, offset=0):
+	inputdata = read_file(fname, length = length, offset = offset, sync=True)
+	freqset = []
+	dataset = []
+	i = 0
+	chan_accumulation = []
+	for datum in inputdata:
+		if datum[0] == 0:
+			# We have frequency data
+			# print('Frequencies:')
+			# print(datum)
+			freqset.append(datum[1])
+			# print(len(datum[1]))
+			if i != 0:
+				dataset.append(chan_accumulation / 10)
+			chan_accumulation = np.zeros(len(datum[1]))
+		else:
+			# We have accumulation data
+			# print(datum)
+			chan_accumulation = chan_accumulation + datum[1]
+		i += 1
+		# if i > 20:
+		# 	exit()
+	# We need one last dataset appending.
+	dataset.append(chan_accumulation / 10)
+
+	return (np.asarray(freqset,dtype=np.float64), np.asarray(dataset,dtype=np.float64))
+
 def read_rhea_data(fname, length=None, offset=0):
 	inputdata = read_file(fname, length = length, offset = offset, sync=True)
 	dataset = []
-	# i = 0
+	i = 0
 	for datum in inputdata:
+		# print(datum)
 		# i += 1
+		# if i > 20:
+		# 	exit()
+
 		# Skip the first data point
 		# if i == 1:
 			# continue
