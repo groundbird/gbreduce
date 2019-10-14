@@ -55,7 +55,6 @@ def read_rhea_swp_data(fname, length=None, offset=0):
 		# 	exit()
 	# We need one last dataset appending.
 	dataset.append(chan_accumulation / 10)
-
 	return (np.asarray(freqset,dtype=np.float64), np.asarray(dataset,dtype=np.float64))
 
 def read_rhea_data(fname, length=None, offset=0):

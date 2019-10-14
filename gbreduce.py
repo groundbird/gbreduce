@@ -29,6 +29,7 @@ from gbreduce_functions import *
 from gbreduce_read import *
 from rhea_comm.lib_read_rhea import *
 import mkid_pylibs as klib
+from matplotlib.gridspec import GridSpec
 
 class gbreduce:
 	def __init__(self,datadir="/net/nas/proyectos/quijote2/tod/",outdir='',nside=512,datarate=1000,use_mkidpylibs=True):
@@ -159,7 +160,7 @@ class gbreduce:
 			# print(samplefreqs)
 
 		# Get the first fit from mkids_lib
-		if self.use_mkidpylibs:
+		if self.use_mkidpylibs == True:
 			kid = klib.kidana.KidAnalyzer()
 			paramset = []
 			for i in range(len(centerfreqs)):
@@ -174,7 +175,38 @@ class gbreduce:
 				paramset.append(mkid_fit_params)
 			# exit()
 		else:
-			# params = np.array([10.0, 1.0, 1.0, 10.0, (centerfreqs[0]+1.5)*1e6+4e9, 1.0, 1.0, 1.0])
+			# dataset = dataset[1300:1800,:]
+			# samplefreqs = samplefreqs[1300:1800]
+			# print(samplefreqs)
+			# print(dataset)
+			print(len(samplefreqs))
+			# First do a fit to a skewed Lorentizian.
+			params = Fit_SkewedLorentizian(samplefreqs[1300:1800], dataset[1300:1800,0]**2+dataset[1300:1800,1]**2)
+			params1 = params
+			print(params)
+			params = Fit_7para(samplefreqs, dataset[:,0]+dataset[:,1]*1j, fitresult=params)
+			print(params)
+
+			t = dataset[:,0]**2 + dataset[:,1]**2            
+			fig = plt.figure(figsize=(10, 8))
+			gs = GridSpec(8, 2, figure=fig)
+			ax1 = fig.add_subplot(gs[0, 0])
+			ax1.plot(samplefreqs, dataset[:,0])
+			ax2 = fig.add_subplot(gs[0, 1])
+			ax2.plot(samplefreqs, dataset[:,1])
+			ax3 = fig.add_subplot(gs[1:3, :])
+			ax3.plot(dataset[:,0], dataset[:,1])
+			# if self.fitresult_sp is not None:
+			ax3.plot(Fit_7para_Func(params.params, samplefreqs), Fit_7para_Func(params.params, samplefreqs))
+			ax3.set_aspect('equal')
+			ax4 = fig.add_subplot(gs[4:6, :])
+			ax4.plot(samplefreqs, t)
+			ax4.plot(samplefreqs, Fit_SkewedLorentizian_Func(params1.params, samplefreqs))
+			ax5 = fig.add_subplot(gs[7:9, :])
+			ax5.plot(samplefreqs, Fit_SkewedLorentizian_Func(params1.params, samplefreqs, data=t))
+			fig.tight_layout()
+			plt.show()
+			exit()
 
 			# samplefreqs = (samplefreqs) * 1e6
 			# params = np.array([10.0, 1.0, 1.0, 10.0, (1.5)*1e6, 1.0, 1.0, 1.0])
@@ -273,8 +305,8 @@ class gbreduce:
 			plt.close()
 
 			p1,p2,p3,p4,p5,p6,p7,p8 = map(lambda v: (v[1], v[2]-v[1], v[1]-v[0]),
-	                             zip(*np.percentile(samples, [16, 50, 84],
-	                                                axis=0)))
+								 zip(*np.percentile(samples, [16, 50, 84],
+													axis=0)))
 			print(p1)
 			print(p2)
 			print(p3)

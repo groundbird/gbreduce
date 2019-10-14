@@ -16,6 +16,7 @@ from scipy import signal, optimize
 import astropy.units as u
 from scipy.optimize import curve_fit
 import os
+from lmfit import minimize, Parameters, fit_report
 
 
 def calc_beam_area(beam):
@@ -55,8 +56,8 @@ def compute_residuals_gaussian(param, x, y):
 
 # From mkid_pylibs.fitters.py by Honda
 def gao_rewind(x, y, arga, absa, tau, fr, Qr, Qc, phi0):
-    tmp = y/absa/np.exp(-1j*(2*np.pi*x*tau-arga))
-    return (tmp-1)*Qc/Qr + 0.5
+	tmp = y/absa/np.exp(-1j*(2*np.pi*x*tau-arga))
+	return (tmp-1)*Qc/Qr + 0.5
 
 def fit_mkids(f, param):
 	# a, w, t, c, fr, qr, qc, p0 = param
@@ -97,16 +98,16 @@ def lnprior(p, bounds):
 	return 0.0
 
 def lnprob(p, bounds, x, y, yerr):
-    lp = lnprior(p, bounds)
-    if not np.isfinite(lp):
-        return -np.inf
-    return lp + lnlike(p, x, y, yerr)
+	lp = lnprior(p, bounds)
+	if not np.isfinite(lp):
+		return -np.inf
+	return lp + lnlike(p, x, y, yerr)
 
 def real_to_complex(z):      # real vector of length 2n -> complex of length n
-    return z[:len(z)//2] + 1j * z[len(z)//2:]
+	return z[:len(z)//2] + 1j * z[len(z)//2:]
 
 def complex_to_real(z):      # complex vector of length n -> real of length 2n
-    return np.concatenate((np.real(z), np.imag(z)))
+	return np.concatenate((np.real(z), np.imag(z)))
 
 
 def plot_tod(data, outputname,formatstr='b.'):
@@ -125,3 +126,110 @@ def plot_val_tod(val, data, outputname,formatstr='b.'):
 	plt.close()
 	plt.clf()
 	return
+
+
+
+## Fitting parameters for swp data, from Satoru, 20190925_main_v11.py
+# fitter_nitta SkewedLorentizian (first fitting)
+def Fit_SkewedLorentizian_initparams(f, t):
+	A1_init = (t[0] + t[1])/2
+	A2_init = 0.0
+	A3_init = np.amin(t) - A1_init
+	A4_init = 0.0
+	fr_init = f[np.argmin(t)]
+	Qr_init = 1000
+	initparams = {'A1': A1_init, 'A2': A2_init, 'A3': A3_init, 'A4': A4_init, 'fr': fr_init, 'Qr': Qr_init}
+	return initparams
+
+def Fit_SkewedLorentizian_Func(pars, f, data=None):
+	vals = pars.valuesdict()
+	A1 = vals['A1']
+	A2 = vals['A2']
+	A3 = vals['A3']
+	A4 = vals['A4']
+	fr = vals['fr']
+	Qr = vals['Qr']
+	model = (A1 + A2*(f-fr) + (A3 + A4*(f-fr))/(1 + 4*Qr*Qr*((f-fr)/fr)**2))
+	# return the residual
+	if data is None:
+		return model
+	return model - data
+	
+def Fit_SkewedLorentizian(f, t):
+	initparams = Fit_SkewedLorentizian_initparams(f, t)
+	fit_params = Parameters()
+	fit_params.add('A1', value = initparams['A1'], min = 100)  # Background
+	fit_params.add('A2', value = initparams['A2'])#, min = -0.5, max = 0.5)  # Slope
+	fit_params.add('A3', value = initparams['A3'], max = 0)  # Lowest point
+	fit_params.add('A4', value = initparams['A4'])
+	fit_params.add('fr', value = initparams['fr'], min = initparams['fr'] - 0.2e6, max = initparams['fr'] + 0.2e6)
+	fit_params.add('Qr', value = initparams['Qr'], min = 0, max = 1e6)
+	fit_params.add('Qi', expr = 'Qr*sqrt(A1/(A1 + A3))')
+	fit_params.add('Qc', expr = '1/(1/Qr - 1/Qi)')
+	out = minimize(Fit_SkewedLorentizian_Func, fit_params, args=(f,), kws={'data': t}, nan_policy='omit')
+	# print the fitting result
+	print('Fit_SkewedLorentizian')
+	print(fit_report(out))
+	return out
+
+# fitter_nitta 7para (second fitting)
+def Fit_7para_initparams(f, t, fitresult=None):
+	t_abs = np.abs(t)
+	t_arg = np.angle(t)
+	t_unwrap = np.unwrap(t_arg)
+	if fitresult is not None:
+		a_init = np.sqrt(fitresult.params['A1'].value)
+		alpha_init = t_unwrap[0]
+		tau_init = (t_unwrap[0] - t_unwrap[-1])/((2*np.pi)*(f[-1] - f[0]))
+		phi0_init = t_unwrap[0] - 2*np.pi*fitresult.params['fr'].value*tau_init
+		fr_init = fitresult.params['fr'].value
+		Qr_init = fitresult.params['Qr'].value
+		Qc_init = fitresult.params['Qc'].value
+	else:
+		a_init = (t_abs[0] + t_abs[-1])/2
+		alpha_init = t_unwrap[0]
+		tau_init = (t_unwrap[0] - t_unwrap[-1])/((2*np.pi)*(f[-1] - f[0]))
+		phi0_init = t_unwrap[0] - 2*np.pi*np.mean(f)*tau_init
+		fr_init = np.mean(f)
+		Qr_init = 1000
+		Qc_init = 1000.1
+	initparams = {'a': a_init, 'alpha': alpha_init, 'tau': tau_init, 'phi0': phi0_init, 'fr': fr_init, 'Qr': Qr_init, 'Qc': Qc_init}
+	return initparams
+
+def Fit_7para_Func(pars, f, data=None):
+	vals = pars.valuesdict()
+	a = vals['a']
+	alpha = vals['alpha']
+	tau = vals['tau']
+	phi0 = vals['phi0']
+	fr = vals['fr']
+	Qr = vals['Qr']
+	Qc = vals['Qc']
+	model = a * np.exp(1j*alpha) * np.exp(-2*np.pi*1j*f*tau) * (1 - (Qr/Qc*np.exp(1j*phi0))/(1 + 2*1j*Qr*(f-fr)/fr))
+	# return the residual
+	if data is None:
+		return model
+	resid = model - data
+	return resid.view(np.float)
+	
+def Fit_7para(f, t, **kwargs):
+	initparams = Fit_7para_initparams(f, t, **kwargs)
+	fit_params = Parameters()
+	fit_params.add('a', value = initparams['a'], min = 0)#, max = 50)
+	fit_params.add('alpha', value = initparams['alpha'])#, min = -np.pi, max = np.pi)
+	fit_params.add('tau', value = initparams['tau'])#, min = -5e-9, max = 5e-9)
+	fit_params.add('phi0', value = initparams['phi0'])#, min = -np.pi, max = np.pi)
+	fit_params.add('fr', value = initparams['fr'])
+	fit_params.add('Qr', value = initparams['Qr'], min = 1e2, max = 1e8)
+	fit_params.add('Qc', value = initparams['Qc'], min = 1.01e2, max = 1e8)
+	print('hi')
+	print(fit_params)
+	print(1/(1/initparams['Qr']-1/initparams['Qc']))
+	fit_params.add('Qi', expr = '1/(1/Qr - 1/Qc)')
+	print('hi')
+	print(fit_params)
+	out = minimize(Fit_7para_Func, fit_params, args=(f,), kws={'data': t}, nan_policy='omit')
+	# print the fitting result
+	print('Fit_7para')
+	print(fit_report(out))
+	return out
