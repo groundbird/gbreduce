@@ -9,6 +9,14 @@ class DataType(Enum):
     SYNC = 2
     UART = 3
 
+def header_info(d_bytes):
+    numbytes = d_bytes[0:4].decode('utf-8')
+    version = int.from_bytes(d_bytes[4:8], 'little',signed=False)
+    time = float(int.from_bytes(d_bytes[8:12], 'little',signed=False)) + float(int.from_bytes(d_bytes[12:16], 'little',signed=False))*1e-6
+    headertxt = d_bytes[16:].decode('utf-8')
+
+    return [numbytes, version, time, headertxt]
+
 def parsebytes(d_bytes):
     if d_bytes[0:2] != b'\x07\x12':
         raise Exception('HEADER ERROR: {}'.format(d_bytes[0:2]))
@@ -57,6 +65,10 @@ class ElData:
     def get_data(self, cur):
         self._fd.seek(256+12*cur)
         return parsebytes(self._fd.read(12))
+
+    def get_header(self):
+        self._fd.seek(0)
+        return header_info(self._fd.read(256))
 
 def main():
     parser = ArgumentParser()
