@@ -32,10 +32,12 @@ import mkid_pylibs as klib
 from matplotlib.gridspec import GridSpec
 
 class gbreduce:
-	def __init__(self,datadir="/net/nas/proyectos/quijote2/tod/",outdir='',nside=512,datarate=1000,use_mkidpylibs=True):
+	def __init__(self,datadir="/net/nas/proyectos/quijote2/tod/",outdir='',azdir='',eldir='',elcompressed=False,nside=512,datarate=1000,use_mkidpylibs=True):
 		# Directories
 		self.datadir = datadir
 		self.outdir = outdir
+		self.azdir = azdir
+		self.eldir = eldir
 
 		# Basic telescope information
 		self.telescope = EarthLocation(lat=28.300467*u.deg, lon=-16.510288*u.deg, height=2390*u.m)
@@ -43,6 +45,7 @@ class gbreduce:
 
 		# Analysis options
 		self.use_mkidpylibs = use_mkidpylibs
+		self.elcompressed = elcompressed
 
 		# Map-making information
 		self.nside = nside
@@ -112,10 +115,25 @@ class gbreduce:
 			pos = (np.median(Angle(skypos.ra).degree),np.median((Angle(skypos.dec).degree)))
 		return healpix_pixel, pos
 
-	def analyse_swp(self, prefix, filename, datarate=0,freqrange=3.0,freqstep=0.01,centerfreqs=[], lo=4.99e9):
+	def analyse_swp(self, prefix, filename, datarate=0,freqrange=0.0,freqstep=0.0,centerfreqs=[], lo=4.99e9,starttime=0.0):
+		fileinfo = parse_filename(filename)
+		# [fileformat, freqs, freqwidth, freqstep, date]
+		if fileinfo[0] != 'swp':
+			print('Wrong file format!')
+			return 0
+		else:
+			if freqrange == 0.0:
+				freqrange = fileinfo[2]
+			if freqstep == 0.0:
+				freqstep = fileinfo[3]
+			if centerfreqs == []:
+				centerfreqs = fileinfo[1]
+			if starttime == 0.0:
+				starttime = fileinfo[4]
 		print(freqrange)
 		print(freqstep)
 		print(centerfreqs)
+		print(starttime)
 		# Sort out the output directories
 		if prefix[-1] != '/':
 			prefix = prefix + "/"
@@ -154,7 +172,7 @@ class gbreduce:
 			# print(len(dataset[np.abs(dataset[:,2])<1e-5,2]))
 			# print(dataset[0:100,1])
 			# print(centerfreqs[0])
-			samplefreqs = (samplefreqs+centerfreqs[0]-1.5) * 1e6
+			samplefreqs = (samplefreqs+centerfreqs[0]-1.5)
 			# print(samplefreqs)
 			samplefreqs = samplefreqs + lo
 			# print(samplefreqs)
@@ -334,7 +352,7 @@ class gbreduce:
 
 		return paramset
 
-	def analyse_tod(self, prefix, filename, el=70,rpm=2,datarate=0,starttime=2458747.5,numpix=4, plotlimit=0.0, quiet=False, dofft=False, plottods=True, plotmap=True, dopol=False, plotcombination=True, numfiles=50,swp_params=[],centerfreqs=[],lo=4.99e9):
+	def analyse_tod(self, prefix, filename, el=70,rpm=2,datarate=0.0,starttime=0.0,numpix=4, plotlimit=0.0, quiet=False, dofft=False, plottods=True, plotmap=True, dopol=False, plotcombination=True, numfiles=50,swp_params=[],centerfreqs=[],lo=4.99e9):
 
 		# Sort out the output directories
 		if prefix[-1] != '/':
@@ -344,8 +362,25 @@ class gbreduce:
 		ensure_dir(self.outdir+prefix)
 		ensure_dir(self.outdir+prefix+plotext)
 
+		fileinfo = parse_filename(filename)
+		# [fileformat, freqs, samplespeed, date]
+		if fileinfo[0] != 'tod':
+			print('Wrong file format!')
+			return 0
+		else:
+			if datarate == 0.0:
+				datarate = fileinfo[2]
+			if centerfreqs == []:
+				centerfreqs = fileinfo[1]
+			if starttime == 0.0:
+				starttime = fileinfo[3]
+		print(datarate)
 		print(centerfreqs)
-		freqs = np.asarray(centerfreqs) * 1.0e6
+		print(starttime)
+
+
+		print(centerfreqs)
+		freqs = np.asarray(centerfreqs)
 		freqs = freqs +lo
 		print(freqs)
 
@@ -390,6 +425,15 @@ class gbreduce:
 		plot_val_tod(test.real, test.imag, self.outdir+prefix+plotext+'test5.png')
 		# exit()
 
+		# Calculate the timing
+		timestream = starttime + np.arange(numsamples)/(datarate)
+		print(min(timestream))
+		print(max(timestream))
+
+		azdata = self.get_azimuth_data(min(timestream),max(timestream))
+		print(azdata)
+		exit()
+
 		# Make up the az+el information
 		deg_per_sec = rpm*360.0/60.0
 		numsamples = len(dataset[:])
@@ -402,10 +446,10 @@ class gbreduce:
 		az = np.arange(numsamples)*deg_per_sec/datarate
 		az = az % 360
 
-		jd = starttime+np.arange(numsamples)/(24.0*60.0*60.0*datarate)
-		# print(jd)
-		# exit()
-		skypos = self.calc_positions(az, el, jd)
+
+		t = Time(timestream, format='unix', scale='utc')
+
+		skypos = self.calc_positions(az, el, t.jd)
 		healpix_pixel, centralpos = self.calc_healpix_pixels(skypos)
 
 		plot_tod(az,self.outdir+prefix+plotext+'/plot_az.png')
@@ -413,13 +457,14 @@ class gbreduce:
 		plot_tod(skypos.dec,self.outdir+prefix+plotext+'/plot_dec.png')
 		# plot_tod(pa,self.outdir+prefix+plotext+'/plot_pa.png')
 
-		for pix in range(0,numpix*2):
-			rewound = gao_rewind(freqs[pix],dataset[:,pix*2+1]+1j*dataset[:,pix*2+2], swp_params[pix]['arga'], swp_params[pix]['absa'], swp_params[pix]['tau'], swp_params[pix]['fr'], swp_params[pix]['Qr'], swp_params[pix]['Qc'], swp_params[pix]['phi0'])
-			# rewound_offpeak = gao_rewind(dataset[:,pix*4]+3, dataset[:,pix*4]+4, swp_params[pix]['arga'], swp_params[pix]['absa'], swp_params[pix]['tau'], swp_params[pix]['fr'], swp_params[pix]['Qr'], swp_params[pix]['Qc'], swp_params[pix]['phi0'])
-			dataset[:,pix*2+1] = abs(rewound)
-			dataset[:,pix*2+2] = angle(rewound)
-			# dataset[:,pix*4+2] = abs(rewound_offpeak)
-			# dataset[:,pix*4+3] = angle(rewound_offpeak)
+		if swp_params != []:
+			for pix in range(0,numpix*2):
+				rewound = gao_rewind(freqs[pix],dataset[:,pix*2+1]+1j*dataset[:,pix*2+2], swp_params[pix]['arga'], swp_params[pix]['absa'], swp_params[pix]['tau'], swp_params[pix]['fr'], swp_params[pix]['Qr'], swp_params[pix]['Qc'], swp_params[pix]['phi0'])
+				# rewound_offpeak = gao_rewind(dataset[:,pix*4]+3, dataset[:,pix*4]+4, swp_params[pix]['arga'], swp_params[pix]['absa'], swp_params[pix]['tau'], swp_params[pix]['fr'], swp_params[pix]['Qr'], swp_params[pix]['Qc'], swp_params[pix]['phi0'])
+				dataset[:,pix*2+1] = abs(rewound)
+				dataset[:,pix*2+2] = angle(rewound)
+				# dataset[:,pix*4+2] = abs(rewound_offpeak)
+				# dataset[:,pix*4+3] = angle(rewound_offpeak)
 
 		for pix in range(0,numpix*4):
 
@@ -478,7 +523,7 @@ class gbreduce:
 		# # Write out the TOD to disk
 		# ra_col = fits.Column(name='ra',format='E',array=np.array(Angle(skypos.ra).degree))
 		# dec_col = fits.Column(name='dec',format='E',array=np.array(Angle(skypos.dec).degree))
-		# jd_col = fits.Column(name='mjd',format='E',array=jd-2400000.5)
+		# jd_col = fits.Column(name='mjd',format='E',array=t.jd-2400000.5)
 		# col1 = fits.Column(name='ch1',format='E',array=dataset[:,1])
 		# col2 = fits.Column(name='ch2',format='E',array=dataset[:,2])
 		# col3 = fits.Column(name='ch3',format='E',array=dataset[:,3])
@@ -506,3 +551,33 @@ class gbreduce:
 		# hdul = fits.HDUList([primary_hdu, hdu])
 		# hdul.writeto(self.outdir+prefix+prefix[:-1]+'_tod.fits',overwrite=True)
 		return
+
+	def get_azimuth_data(self,start,end):
+		# Work out which azimuth files we need to read in.
+		startdir = datetime.utcfromtimestamp(int(start)).strftime('%Y/%m/%d')
+		try:
+			filelist = os.listdir(self.azdir + startdir)
+		except:
+			print('No azimuth data found!')
+			return []
+
+		enddir = datetime.utcfromtimestamp(int(end)).strftime('%Y/%m/%d')
+		if enddir != startdir:
+			# Also need to append these
+			try:
+				filelist.append(os.listdir(self.azdir + enddir))
+			except:
+				print('No azimuth data found for the second day!')
+
+		print(filelist)
+		return filelist
+
+
+	def get_azimuth_data_from_dir(self,dir):
+		results = []
+		for file in os.listdir(self.aself.datadir):
+			if searchtext in file:
+				obsname = "-".join(file.split("-")[:-1])
+				if obsname not in results:
+					results.append(obsname)
+		return results

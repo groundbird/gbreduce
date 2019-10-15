@@ -15,6 +15,8 @@ import scipy.fftpack
 from scipy import signal, optimize
 import os
 from rhea_comm.packet_reader import read_file, get_length
+import time
+import datetime
 
 # From rhea_comm.reader_tod.header_read()
 def read_rhea_header(fname):
@@ -29,6 +31,68 @@ def read_rhea_header(fname):
 	# 	data = [v for i, v in enumerate(d) if i % 2 == 0]
 	# 	pass
 	return time , data
+
+def parse_filename(filename,quiet=True):
+	if '/' in filename:
+		filename = filename.split('/')[-1]
+	fileformat = ''
+	freqs = []
+	freqwidth = 0
+	freqstep = 0
+	date = 0
+	samplespeed = 0
+	if 'swp' in filename:
+		fileformat = 'swp'
+		# mulswp_+003.000MHzWidth_+000.001MHzStep_-082.740MHz_-080.740MHz_+016.162MHz_+018.162MHz_+029.276MHz_+031.276MHz_+078.775MHz_+080.775MHz_2019-0921-053919.rawdata
+		testfilename = filename.replace('mulswp_','').replace('.rawdata','')
+		if not quiet:
+			print(testfilename)
+		test = testfilename.split('_')
+		if not quiet:
+			print(test)
+		for line in test:
+			if 'Width' in line:
+				if 'MHz' in line:
+					freqwidth = float(line.replace('MHz','').replace('Width',''))*1e6
+				else:
+					print("Unknown frequency unit for width! Line: " + str(line))
+			elif 'Step' in line:
+				if 'MHz' in line:
+					freqstep = float(line.replace('MHz','').replace('Step',''))
+				else:
+					print("Unknown frequency unit for step! Line: " + str(line))*1e6
+			elif 'MHz' in line:
+				freqs.append(float(line.replace('MHz',''))*1e6)
+		date = time.mktime(datetime.datetime.strptime(test[-1], "%Y-%m%d-%H%M%S").timetuple())
+		if not quiet:
+			print(fileformat)
+			print(freqwidth)
+			print(freqstep)
+			print(freqs)
+			print(date)
+		return [fileformat, freqs, freqwidth, freqstep, date]
+	elif 'tod' in filename:
+		fileformat = 'tod'
+		#tod_-082.664MHz_-080.664MHz_+016.174MHz_+018.174MHz_+029.302MHz_+031.302MHz_+078.873MHz_+080.873MHz_0001kSPS_2019-0921-052531.rawdata
+		testfilename = filename.replace('tod_','').replace('.rawdata','')
+		if not quiet:
+			print(testfilename)
+		test = testfilename.split('_')
+		if not quiet:
+			print(test)
+		for line in test:
+			if 'kSPS' in line:
+				samplespeed = float(line.replace('kSPS',''))*1e3
+			elif 'MHz' in line:
+				freqs.append(float(line.replace('MHz',''))*1e6)
+		date = time.mktime(datetime.datetime.strptime(test[-1], "%Y-%m%d-%H%M%S").timetuple())
+		if not quiet:
+			print(fileformat)
+			print(samplespeed)
+			print(freqs)
+			print(date)
+		return [fileformat, freqs, samplespeed, date]
+	return []
 
 def read_rhea_swp_data(fname, length=None, offset=0):
 	inputdata = read_file(fname, length = length, offset = offset, sync=True)
