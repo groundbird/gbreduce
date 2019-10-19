@@ -1,4 +1,4 @@
-#!/usr/bin/env python
+#!/usr/bin/env python3
 # -*- coding: utf-8  -*-
 #
 # Various functions related to reading GroundBIRD data, separate from the class
@@ -17,6 +17,150 @@ import os
 from rhea_comm.packet_reader import read_file, get_length
 import time
 import datetime
+import json
+import eldata
+import glob
+from enum import Enum
+from pathlib import Path
+import scipy.stats as stats
+import RotLog_file
+import RotLog_file_oldversion
+
+def get_az_data(filename):
+	rotlog = RotLog_file.RotLog_file(filename)
+	unixtime = float(rotlog.start_time)
+	datalength = rotlog.length
+	times, nr, roff, vals = rotlog.read_file()
+	# numbytes, version, unixtime, headertxt = tmped.get_header()
+	starttime = float(times[0])
+	times_new = []
+	for i in range(len(times)):
+		times_new.append((float(times[i]) - starttime)*0.001 + unixtime)
+
+	return times, vals
+
+
+def compress_and_plot_azdata(indir,out_prefix,reload=False,savedata=True):
+	if reload:
+		times, vals = np.loadtxt(indir+out_prefix+'.txt.gz',unpack=True)
+	else:
+		files = sorted(Path(indir).rglob('*.dat.xz'))
+		print(files)
+		times = []
+		vals = []
+		times_sync = []
+		vals_sync = []
+		for filename in files:
+			print(filename)
+			timeset, valset = get_az_data(filename)
+			times = times + timeset
+			vals = vals + valset
+		# Calculate zenith distance, and save to disk
+		if savedata:
+			np.savetxt(indir+out_prefix+'.txt.gz',np.transpose([times, vals]))
+
+	times = np.asarray(times)
+	vals = np.asarray(vals)
+
+	# Plot the encoder data
+	plt.figure(figsize=(8.0, 5.0), dpi=100)
+	plt.grid(True)
+	plt.xlabel('Unix time')
+	plt.ylabel('Azimuth value')
+	plt.plot(times, vals,'b-')
+	plt.savefig(indir+out_prefix+'_az.png', dpi=1000)
+	plt.clf()
+
+	return
+	
+def get_el_data(filename):
+	tmped = eldata.ElData(filename)
+	numbytes, version, unixtime, headertxt = tmped.get_header()
+	times = []
+	vals = []
+	for i in range(0,tmped._length):
+		try:
+			data = tmped.get_data(i)
+			if data[2].name == 'DATA':
+				if starttime == 0:
+					starttime = data[0]
+				times.append((data[0] - starttime)*0.001 + unixtime)
+				vals.append(data[1])
+		except:
+			# If we find a problem, move onto the next one
+			continue
+
+	return times, vals
+
+def get_el_data_condensed(filename):
+	tmped = eldata.ElData(filename)
+	numbytes, version, unixtime, headertxt = tmped.get_header()
+	times = []
+	vals = []
+	lastval = 0
+	starttime = 0
+	times_sync = []
+	vals_sync = []
+	for i in range(0,tmped._length):
+		try:
+			data = tmped.get_data(i)
+			if data[2].name == 'DATA':
+				if starttime == 0:
+					starttime = data[0]
+				if data[1] != lastval:
+					times.append((data[0] - starttime)*0.001 + unixtime)
+					vals.append(data[1])
+					lastval = data[1]
+			elif data[2].name == 'SYNC':
+				times_sync.append((data[0] - starttime)*0.001 + unixtime)
+				vals_sync.append(data[1])
+		except:
+			# If we find a problem, move onto the next one
+			continue
+
+	return times, vals, times_sync, vals_sync
+
+def compress_and_plot_eldata(indir,out_prefix,reload=False,savedata=True):
+	if reload:
+		times, vals, zenithdistance = np.loadtxt(indir+out_prefix+'.txt.gz',unpack=True)
+	else:
+		files = sorted(Path(indir).rglob('*.dat'))
+		print(files)
+		times = []
+		vals = []
+		times_sync = []
+		vals_sync = []
+		for filename in files:
+			print(filename)
+			timeset, valset, timesyncset, valsyncset = get_el_data_condensed(filename)
+			times = times + timeset
+			vals = vals + valset
+			times_sync = times_sync + timesyncset
+			vals_sync = vals_sync + valsyncset
+		# Calculate zenith distance, and save to disk
+		zenithdistance = (np.asarray(vals).copy()-9113.0)/900.0
+		if savedata:
+			np.savetxt(indir+out_prefix+'.txt.gz',np.transpose([times, vals, zenithdistance]))
+			np.savetxt(indir+out_prefix+'_sync.txt.gz',np.transpose([times_sync, vals_sync]))
+
+	times = np.asarray(times)
+	vals = np.asarray(vals)
+
+	# Plot the encoder data
+	plt.figure(figsize=(8.0, 5.0), dpi=100)
+	plt.plot(times, vals,'b-')
+	plt.savefig(indir+out_prefix+'_encoder.png', dpi=1000)
+	plt.clf()
+
+	# Plot the zenith distance
+	plt.plot(times, zenithdistance,'b-')
+	plt.grid(True)
+	plt.xlabel('Unix time')
+	plt.ylabel('Zenith distance')
+	plt.savefig(indir+out_prefix+'_zenith.png', dpi=1000)
+	plt.clf()
+
+	return
 
 # From rhea_comm.reader_tod.header_read()
 def read_rhea_header(fname):
@@ -93,6 +237,14 @@ def parse_filename(filename,quiet=True):
 			print(date)
 		return [fileformat, freqs, samplespeed, date]
 	return []
+
+def read_kidslist(filename):
+	with open(filename) as f:
+		kiddict = json.load(f)
+	# Rescale frequencies so they are all in Hz
+	kiddict['kids_freqs'] *= 1e6
+	kiddict['blinds_power'] *= 1e6
+	return kiddict
 
 def read_rhea_swp_data(fname, length=None, offset=0):
 	inputdata = read_file(fname, length = length, offset = offset, sync=True)

@@ -38,6 +38,8 @@ run = gbreduce.gbreduce(outdir=outdir,\
 # print(run.get_azimuth_data(1569041109.0, 1569042108.998))
 # exit()
 
+
+
 folder = '20190926/moon/El75_first/data_mulch__2019-0926-112413/'
 swpfile = 'swpmul__El70first_+006.000MHzWidth_+000.010MHzStep_-082.501MHz_0016.304MHz_0029.452MHz_0079.066MHz_2019-0926-112413.rawdata'
 todfile = 'tod__El70first_+2.0MHzBlindTone_1kSPS_-082.986MHz_0016.124MHz_0029.232MHz_0078.389MHz_2019-0926-112449.rawdata'
