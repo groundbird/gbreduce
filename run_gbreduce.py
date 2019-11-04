@@ -9,6 +9,8 @@ import matplotlib as mpl
 import matplotlib.pyplot as plt
 import gbreduce
 from gbreduce_read import *
+import datetime
+import pytz
 
 from rhea_comm.lib_read_rhea import *
 from rhea_comm.packet_reader import read_file, get_length
@@ -17,14 +19,18 @@ from rhea_comm.packet_reader import read_file, get_length
 mpl.rcParams['agg.path.chunksize'] = 10000
 
 # Set this to where you have a copy of the data
-basedir = '/Users/mpeel/Documents/GroundBIRD/data/'
+# basedir = '/Users/mpeel/Documents/GroundBIRD/data/'
+basedir = '/Volumes/iOmega/GroundBIRD/data/'
 # Set this to where you want to output stuff. The directory should already exist.
 # NB: subdirectories will automatically be created for each dataset.
 outdir = '/Users/mpeel/Documents/git/gbreduce/output/'
+outdir = '/Volumes/iOmega/GroundBIRD/analysis/'
 # Set this to the location of the Azimuth encoder data
-azdir = '/Volumes/proyectos/cosmology/groundbird/data/logdata/rotary/'
+# azdir = '/Volumes/proyectos/cosmology/groundbird/data/logdata/rotary/'
+azdir = basedir+'logbdata/az_enc/'
 # Set this to the location of the elevation encoder data (in compressed format if elcompressed=True)
-eldir = '/Users/mpeel/Documents/groundbird/data/elevation/'
+# eldir = '/Users/mpeel/Documents/groundbird/data/elevation/'
+eldir = basedir+'logbdata/el_enc/'
 elcompressed=True
 
 # Start the class
@@ -38,6 +44,28 @@ run = gbreduce.gbreduce(outdir=outdir,\
 # print(run.get_azimuth_data(1569041109.0, 1569042108.998))
 # exit()
 
+# print(fetch_azdata(azdir, 1569041109.0+(24*24*60*60), 1569042108.998+(24.01*24*60*60), compressed=False))
+# print(fetch_eldata(eldir, 1569041109.0+(20*24*60*60), 1569042108.998+(21*24*60*60), compressed=False))
+# exit()
+
+# folder = 'kiddata/20191018/data_022435/'
+# starttime = datetime(2019,10,18,2,24,35).timestamp()
+folder = 'kiddata/20191018/data_031254/'
+starttime = datetime(2019,10,18,3,13,16).timestamp()
+name='20191018_data_031254'
+
+# folder = 'kiddata/20191018/data_043458/'
+# starttime = datetime(2019,10,18,4,35,43,tzinfo=pytz.timezone('UTC')).timestamp()
+# name='20191018_data_043458'
+
+
+swpfile = 'swp.rawdata'
+todfile = 'tod.rawdata'
+kidparams = 'kids.list'
+print(starttime)
+swp_params=[]
+tod_analysis = run.analyse_tod(name,basedir+folder+todfile,kidparams=basedir+folder+kidparams,swp_params=swp_params,starttime=starttime)
+exit()
 
 
 folder = '20190926/moon/El75_first/data_mulch__2019-0926-112413/'

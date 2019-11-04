@@ -43,7 +43,7 @@ def read_packet(buff):
 def conv_angle(_v):
     return float(2. * np.pi * _v / 8192.)
 
-class RotLog_file():
+class RotLog_file_old():
     """read file"""
     def __init__(self, _path, n_rotate=-1, sync_off=0, compress=True):
         self._packetsize = 8

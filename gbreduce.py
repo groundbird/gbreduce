@@ -352,7 +352,7 @@ class gbreduce:
 
 		return paramset
 
-	def analyse_tod(self, prefix, filename, el=70,rpm=2,datarate=0.0,starttime=0.0,numpix=4, plotlimit=0.0, quiet=False, dofft=False, plottods=True, plotmap=True, dopol=False, plotcombination=True, numfiles=50,swp_params=[],centerfreqs=[],lo=4.99e9):
+	def analyse_tod(self, prefix, filename, el=[],rpm=2,datarate=1000.0,starttime=0.0,numpix=4, plotlimit=0.0, quiet=False, dofft=False, plottods=True, plotmap=True, dopol=False, plotcombination=True, numfiles=50,swp_params=[],centerfreqs=[],lo=4.99e9,kidparams=[]):
 
 		# Sort out the output directories
 		if prefix[-1] != '/':
@@ -362,18 +362,26 @@ class gbreduce:
 		ensure_dir(self.outdir+prefix)
 		ensure_dir(self.outdir+prefix+plotext)
 
-		fileinfo = parse_filename(filename)
-		# [fileformat, freqs, samplespeed, date]
-		if fileinfo[0] != 'tod':
-			print('Wrong file format!')
-			return 0
+		if kidparams == []:
+			# We have an old style file, read in the parameters from the filename
+			fileinfo = parse_filename(filename)
+			# [fileformat, freqs, samplespeed, date]
+			if fileinfo[0] != 'tod':
+				print('Wrong file format!')
+				return 0
+			else:
+				if datarate == 0.0:
+					datarate = fileinfo[2]
+				if centerfreqs == []:
+					centerfreqs = fileinfo[1]
+				if starttime == 0.0:
+					starttime = fileinfo[3]
 		else:
-			if datarate == 0.0:
-				datarate = fileinfo[2]
-			if centerfreqs == []:
-				centerfreqs = fileinfo[1]
-			if starttime == 0.0:
-				starttime = fileinfo[3]
+			kids = read_kidslist(kidparams)
+			print(kids)
+			centerfreqs = kids['kids_freqs']
+			lo = kids['sg_freq']
+			# exit()
 		print(datarate)
 		print(centerfreqs)
 		print(starttime)
@@ -426,25 +434,47 @@ class gbreduce:
 		# exit()
 
 		# Calculate the timing
+		numsamples = len(dataset[:])
 		timestream = starttime + np.arange(numsamples)/(datarate)
 		print(min(timestream))
 		print(max(timestream))
 
-		azdata = self.get_azimuth_data(min(timestream),max(timestream))
-		print(azdata)
-		exit()
+		# Either get azimuth data, or make some up...
+		aztimes, azdata = fetch_azdata(self.azdir, min(timestream), max(timestream), compressed=False)
+		# print(azdata)
+		if(len(azdata) < 1):
+			# Make up the az+el information
+			deg_per_sec = rpm*360.0/60.0
+			numrotations = rpm*numsamples/(60.0*datarate)
+			print(numsamples/(60.0*datarate))
+			print(numrotations)
+			print(rpm)
+			print(deg_per_sec)
+			print(deg_per_sec*60.0)
+			az = np.arange(numsamples)*deg_per_sec/datarate
+			az = az % 360
+		else:
+			az = np.zeros(len(timestream))
+			aztimes_pos = 0
+			for i in range(0,len(timestream)):
+				while(aztimes[aztimes_pos] < timestream[i] and aztimes_pos < len(aztimes)):
+					aztimes_pos += 1
+				az[i] = azdata[aztimes_pos-1]
 
-		# Make up the az+el information
-		deg_per_sec = rpm*360.0/60.0
-		numsamples = len(dataset[:])
-		numrotations = rpm*numsamples/(60.0*datarate)
-		print(numsamples/(60.0*datarate))
-		print(numrotations)
-		print(rpm)
-		print(deg_per_sec)
-		print(deg_per_sec*60.0)
-		az = np.arange(numsamples)*deg_per_sec/datarate
-		az = az % 360
+		# If the elevation parameter isn't set, read in the encoder values
+		if el == []:
+			eltimes, eldata = fetch_eldata(self.eldir, min(timestream), max(timestream), compressed=self.elcompressed)
+			el = np.zeros(len(timestream))
+			eltimes_pos = 0
+			for i in range(0,len(timestream)):
+				# print(eltimes_pos)
+				# print(eltimes)
+				while(eltimes[eltimes_pos] < timestream[i]):
+					if eltimes_pos >= len(eltimes):
+						break
+					eltimes_pos += 1
+
+				el[i] = (eldata[eltimes_pos-1])+90.0 # Convert from zenith angle to elevation
 
 
 		t = Time(timestream, format='unix', scale='utc')
@@ -453,6 +483,7 @@ class gbreduce:
 		healpix_pixel, centralpos = self.calc_healpix_pixels(skypos)
 
 		plot_tod(az,self.outdir+prefix+plotext+'/plot_az.png')
+		plot_tod(el,self.outdir+prefix+plotext+'/plot_el.png')
 		plot_tod(skypos.ra,self.outdir+prefix+plotext+'/plot_ra.png')
 		plot_tod(skypos.dec,self.outdir+prefix+plotext+'/plot_dec.png')
 		# plot_tod(pa,self.outdir+prefix+plotext+'/plot_pa.png')
@@ -552,32 +583,32 @@ class gbreduce:
 		# hdul.writeto(self.outdir+prefix+prefix[:-1]+'_tod.fits',overwrite=True)
 		return
 
-	def get_azimuth_data(self,start,end):
-		# Work out which azimuth files we need to read in.
-		startdir = datetime.utcfromtimestamp(int(start)).strftime('%Y/%m/%d')
-		try:
-			filelist = os.listdir(self.azdir + startdir)
-		except:
-			print('No azimuth data found!')
-			return []
+	# def get_azimuth_data(self,start,end):
+	# 	# Work out which azimuth files we need to read in.
+	# 	startdir = datetime.utcfromtimestamp(int(start)).strftime('%Y/%m/%d')
+	# 	try:
+	# 		filelist = os.listdir(self.azdir + startdir)
+	# 	except:
+	# 		print('No azimuth data found!')
+	# 		return []
 
-		enddir = datetime.utcfromtimestamp(int(end)).strftime('%Y/%m/%d')
-		if enddir != startdir:
-			# Also need to append these
-			try:
-				filelist.append(os.listdir(self.azdir + enddir))
-			except:
-				print('No azimuth data found for the second day!')
+	# 	enddir = datetime.utcfromtimestamp(int(end)).strftime('%Y/%m/%d')
+	# 	if enddir != startdir:
+	# 		# Also need to append these
+	# 		try:
+	# 			filelist.append(os.listdir(self.azdir + enddir))
+	# 		except:
+	# 			print('No azimuth data found for the second day!')
 
-		print(filelist)
-		return filelist
+	# 	print(filelist)
+	# 	return filelist
 
 
-	def get_azimuth_data_from_dir(self,dir):
-		results = []
-		for file in os.listdir(self.aself.datadir):
-			if searchtext in file:
-				obsname = "-".join(file.split("-")[:-1])
-				if obsname not in results:
-					results.append(obsname)
-		return results
+	# def get_azimuth_data_from_dir(self,dir):
+	# 	results = []
+	# 	for file in os.listdir(self.aself.datadir):
+	# 		if searchtext in file:
+	# 			obsname = "-".join(file.split("-")[:-1])
+	# 			if obsname not in results:
+	# 				results.append(obsname)
+	# 	return results

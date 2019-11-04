@@ -166,8 +166,8 @@ class RotLog_file():
             ret_nr.append(self._nrot)
             ret_off.append(self._sync_off)
             ret_d.append(conv_angle(_d))
-        data = pd.DataFrame({DataType.timestamp:ret_t, DataType.n_rotate:ret_nr,
-                             DataType.sync_off:ret_off, DataType.az_angle:ret_d})
+        # data = pd.DataFrame({DataType.timestamp:ret_t, DataType.n_rotate:ret_nr,
+                             # DataType.sync_off:ret_off, DataType.az_angle:ret_d})
         return ret_t, ret_nr, ret_off, ret_d
     pass
 

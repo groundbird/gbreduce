@@ -25,6 +25,11 @@ from pathlib import Path
 import scipy.stats as stats
 import RotLog_file
 import RotLog_file_oldversion
+import pytz     ## pip install pytz
+
+# Make sure we are using UTC!
+# mytz = pytz.timezone('UTC')             ## Set your timezone
+# datetime = mytz.normalize(mytz.localize(datetime, is_dst=False))  ## Set is_dst accordingly
 
 def get_az_data(filename):
 	rotlog = RotLog_file.RotLog_file(filename)
@@ -33,11 +38,12 @@ def get_az_data(filename):
 	times, nr, roff, vals = rotlog.read_file()
 	# numbytes, version, unixtime, headertxt = tmped.get_header()
 	starttime = float(times[0])
-	times_new = []
-	for i in range(len(times)):
-		times_new.append((float(times[i]) - starttime)*0.001 + unixtime)
+	times_new = (np.asarray(times).astype(float) - starttime)*0.001 + unixtime
+	# times_new = []
+	# for i in range(len(times)):
+	# 	times_new.append((float(times[i]) - starttime)*0.001 + unixtime)
 
-	return times, vals
+	return list(times_new), vals
 
 
 def compress_and_plot_azdata(indir,out_prefix,reload=False,savedata=True):
@@ -62,17 +68,96 @@ def compress_and_plot_azdata(indir,out_prefix,reload=False,savedata=True):
 	times = np.asarray(times)
 	vals = np.asarray(vals)
 
+	date = datetime.datetime.utcfromtimestamp(times[0])
+	daystart = datetime.datetime(date.year,date.month,date.day,0,0,0,tzinfo=pytz.timezone('UTC')).timestamp()
 	# Plot the encoder data
 	plt.figure(figsize=(8.0, 5.0), dpi=100)
 	plt.grid(True)
 	plt.xlabel('Unix time')
 	plt.ylabel('Azimuth value')
-	plt.plot(times, vals,'b-')
+	plt.plot((times-daystart)/(60.0*60.0), vals,'b-')
 	plt.savefig(indir+out_prefix+'_az.png', dpi=1000)
 	plt.clf()
 
 	return
 	
+
+
+def fetch_azdata(indir, starttime, endtime, compressed=False):
+	# We should have unix time as an input, so convert that to Year/Month/day
+	# We'll assume that we'll only ever need 2 days of data at most.
+	if compressed:
+		ext = '.txt.gz'
+	else:
+		ext = '.dat'
+	startdir = datetime.datetime.utcfromtimestamp(int(starttime)-1).strftime('%Y/%m/%d')
+	print(indir)
+	print(startdir)
+	try:
+		inputlist = os.listdir(indir + startdir)
+		filelist = [startdir+'/'+f for f in inputlist if ext in f]
+
+	except:
+		print('No azimuth data found!')
+		return []
+
+	enddir = datetime.datetime.utcfromtimestamp(int(endtime)+1).strftime('%Y/%m/%d')
+	print(startdir)
+	print(enddir)
+	if enddir != startdir:
+		# print('Hi')
+		# Also need to append these
+		try:
+			inputlist = os.listdir(indir + enddir)
+			filelist = filelist + [enddir+'/'+f for f in inputlist if ext in f]
+		except:
+			print('No azimuth data found for the second day!')
+	# print(filelist)
+	timeset = []
+	az = []
+	if compressed:
+		# We can just read in all the data and return it, since there isn't that much
+		for file in filelist:
+			if 'sync' not in file:
+				times, azimuths = np.loadtxt(indir+file,unpack=True)
+				timeset = list(timeset) + list(times)
+				az = list(az) + list(azimuths)
+	else:
+		# We need to be more picky to save on RAM, only return data relevant to the observation.
+		# First calculate the start times for each file
+		starttimes = []
+		use_files = []
+		for file in filelist:
+			time = file[-18:-12]
+			date = file[0:10]
+			print(date[0:4]+' ' + date[5:7] + ' ' + date[8:10] +" " + time[0:2] + ' ' + time[2:4] + ' ' + time[4:6])
+			timestamp = datetime.datetime(int(date[0:4]),int(date[5:7]),int(date[8:10]),int(time[0:2]),int(time[2:4]),int(time[4:6]),tzinfo=pytz.timezone('UTC')).timestamp()
+			starttimes.append(timestamp)
+			print(starttime)
+			print(timestamp)
+			print(endtime)
+			if timestamp > starttime and timestamp < endtime:
+				use_files[-1] = 1
+				use_files.append(1)
+			else:
+				use_files.append(0)
+			if timestamp > endtime and np.sum(use_files) == 0:
+				# We have the case that the entire dataset is in one file, just use that one.
+				use_files[-2] = 1
+
+		use_files = np.asarray(use_files).astype(int)
+		starttimes = np.asarray(starttimes)
+		filelist = np.asarray(filelist)
+		print(starttimes[use_files>0])
+
+		for file in filelist[use_files > 0]:
+			print(file)
+			times, azimuths = get_az_data(indir+file)
+			timeset = list(timeset) + list(times)
+			az = list(az) + list(azimuths)
+
+	return timeset, az
+
 def get_el_data(filename):
 	tmped = eldata.ElData(filename)
 	numbytes, version, unixtime, headertxt = tmped.get_header()
@@ -162,6 +247,75 @@ def compress_and_plot_eldata(indir,out_prefix,reload=False,savedata=True):
 
 	return
 
+def fetch_eldata(indir, starttime, endtime, compressed=False):
+	# We should have unix time as an input, so convert that to Year/Month/day
+	# We'll assume that we'll only ever need 2 days of data at most.
+	if compressed:
+		ext = '.txt.gz'
+	else:
+		ext = '.dat'
+	startdir = datetime.datetime.utcfromtimestamp(int(starttime)-1).strftime('%Y/%m/%d')
+	print(indir)
+	print(startdir)
+	try:
+		inputlist = os.listdir(indir + startdir)
+		filelist = [startdir+'/'+f for f in inputlist if ext in f]
+
+	except:
+		print('No elevation data found!')
+		return []
+
+	enddir = datetime.datetime.utcfromtimestamp(int(endtime)+1).strftime('%Y/%m/%d')
+	print(startdir)
+	print(enddir)
+	if enddir != startdir:
+		print('Hi')
+		# Also need to append these
+		try:
+			inputlist = os.listdir(indir + enddir)
+			filelist = filelist + [enddir+'/'+f for f in inputlist if ext in f]
+		except:
+			print('No elevation data found for the second day!')
+
+	timeset = []
+	valset = []
+	zenith = []
+	if compressed:
+		# We can just read in all the data and return it, since there isn't that much
+		for file in filelist:
+			if 'sync' not in file:
+				times, vals, zenithdistance = np.loadtxt(indir+file,unpack=True)
+				timeset = list(timeset) + list(times)
+				valset = list(valset) + list(vals)
+				zenith = list(zenith) + list(zenithdistance)
+	else:
+		# We need to be more picky to save on RAM, only return data relevant to the observation.
+		# First calculate the start times for each file
+		starttimes = []
+		use_files = []
+		for file in filelist:
+			time = file[-15:-9]
+			date = file[0:10]
+			# print(date[0:4]+' ' + date[5:7] + ' ' + date[8:10] +" " + time[0:2] + ' ' + time[2:4] + ' ' + time[4:6])
+			timestamp = datetime.datetime(int(date[0:4]),int(date[5:7]),int(date[8:10]),int(time[0:2]),int(time[2:4]),int(time[4:6]),tzinfo=pytz.timezone('UTC')).timestamp()
+			starttimes.append(timestamp)
+			if timestamp > starttime and timestamp < endtime:
+				use_files[-1] = 1
+				use_files.append(1)
+			else:
+				use_files.append(0)
+		use_files = np.asarray(use_files).astype(int)
+		starttimes = np.asarray(starttimes)
+		filelist = np.asarray(filelist)
+
+		for file in filelist[use_files > 0]:
+			print(file)
+			times, vals, timesync, valsync = get_el_data_condensed(indir+file)
+			timeset = list(timeset) + list(times)
+			zenith = list(zenith) + list((np.asarray(vals).copy()-9113.0)/900.0)
+
+	return timeset, zenith
+
 # From rhea_comm.reader_tod.header_read()
 def read_rhea_header(fname):
 	time = 0
@@ -242,8 +396,8 @@ def read_kidslist(filename):
 	with open(filename) as f:
 		kiddict = json.load(f)
 	# Rescale frequencies so they are all in Hz
-	kiddict['kids_freqs'] *= 1e6
-	kiddict['blinds_power'] *= 1e6
+	kiddict['kids_freqs'] = np.asarray(kiddict['kids_freqs']) * 1e6
+	kiddict['blinds_freqs'] = np.asarray(kiddict['blinds_freqs']) * 1e6
 	return kiddict
 
 def read_rhea_swp_data(fname, length=None, offset=0):
