@@ -45,9 +45,12 @@ import os
 # indir = '/Users/mpeel/Desktop/eltest/'
 # compress_and_plot_eldata(indir,'el_2019-10-15_rot',reload=True)
 
-indir = '/Volumes/iOmega/GroundBIRD/data/logbdata/el_enc/2019/'
+basedir = '/net/nas/proyectos/cosmology/groundbird/'
+# basedir = '/Volumes/iOmega/GroundBIRD/'
+
+indir = basedir+'data/logbdata/el_enc/2019/'
 folders = [f.path for f in os.scandir(indir) if f.is_dir() ]
-redo_all = False
+redo_all = True
 print(folders)
 for folder in folders:
 	# print(folder)
@@ -63,7 +66,7 @@ for folder in folders:
 
 
 
-indir = '/Volumes/iOmega/GroundBIRD/data/logbdata/az_enc/2019/'
+indir = basedir+'data/logbdata/az_enc/2019/'
 folders = [f.path for f in os.scandir(indir) if f.is_dir() ]
 redo_all = True
 print(folders)
