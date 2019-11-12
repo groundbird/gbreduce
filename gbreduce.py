@@ -32,12 +32,14 @@ import mkid_pylibs as klib
 from matplotlib.gridspec import GridSpec
 
 class gbreduce:
-	def __init__(self,datadir="/net/nas/proyectos/quijote2/tod/",outdir='',azdir='',eldir='',elcompressed=False,nside=512,datarate=1000,use_mkidpylibs=True):
+	def __init__(self,datadir="/net/nas/proyectos/quijote2/tod/",outdir='',azdir='',eldir='',elcompressed=False,domedir='',tempdir='',nside=512,datarate=1000,use_mkidpylibs=True):
 		# Directories
 		self.datadir = datadir
 		self.outdir = outdir
 		self.azdir = azdir
 		self.eldir = eldir
+		self.domedir = domedir
+		self.tempdir = tempdir
 
 		# Basic telescope information
 		self.telescope = EarthLocation(lat=28.300467*u.deg, lon=-16.510288*u.deg, height=2390*u.m)
@@ -92,19 +94,6 @@ class gbreduce:
 		hdul = fits.HDUList([hdu])
 		hdul.writeto(outputname)
 
-	def write_healpix_map(self, data, prefix, outputname,headerinfo=[]):
-		extra_header = []
-		extra_header.append(("instrum",("tfgi")))
-		extra_header.append(("tgfi_v",(str(self.ver))))
-		extra_header.append(("obsname",(prefix)))
-		now = datetime.now()
-		extra_header.append(("writedat",(now.isoformat())))
-		# for args in extra_header:
-		# 	print(args[0].upper())
-		# 	print(args[1:])
-		hp.write_map(outputname,data,overwrite=True,extra_header=extra_header)
-		return 
-
 	def calc_healpix_pixels(self, skypos):
 		if self.coordsys == 0:
 			healpix_pixel = hp.ang2pix(self.nside, (np.pi/2)-Angle(skypos.b).radian, Angle(skypos.l).radian)
@@ -115,21 +104,90 @@ class gbreduce:
 			pos = (np.median(Angle(skypos.ra).degree),np.median((Angle(skypos.dec).degree)))
 		return healpix_pixel, pos
 
-	def analyse_swp(self, prefix, filename, datarate=0,freqrange=0.0,freqstep=0.0,centerfreqs=[], lo=4.99e9,starttime=0.0):
-		fileinfo = parse_filename(filename)
-		# [fileformat, freqs, freqwidth, freqstep, date]
-		if fileinfo[0] != 'swp':
-			print('Wrong file format!')
-			return 0
+	def write_healpix_map(self, data, prefix, outputname,headerinfo=[]):
+		extra_header = []
+		extra_header.append(("instrum",("gb")))
+		extra_header.append(("gbreduc",(str(self.ver))))
+		extra_header.append(("obsname",(prefix)))
+		now = datetime.now()
+		extra_header.append(("writedat",(now.isoformat())))
+		# for args in extra_header:
+		# 	print(args[0].upper())
+		# 	print(args[1:])
+		hp.write_map(outputname,data,overwrite=True,extra_header=extra_header)
+		return 
+
+	def combine_sky_maps(self,skymaps,hitmaps,prefix,outputname,centralpos=(0,0),plotlimit=0.0):
+
+		skymap = np.zeros(self.npix, dtype=np.float)
+		hitmap = np.zeros(self.npix, dtype=np.float)
+
+		nummaps = len(skymaps)
+		for i in range(0,nummaps):
+			try:
+				inputmap = hp.read_map(skymaps[i])
+				inputhitmap = hp.read_map(hitmaps[i])
+			except:
+				continue
+			for j in range(0,self.npix):
+				if inputhitmap[j] > 0:
+					skymap[j] = skymap[j] + inputmap[j]*inputhitmap[j]
+					hitmap[j] = hitmap[j] + inputhitmap[j]
+
+		# We now have a combined map, time to normalise it
+		for i in range(0,self.npix):
+			if hitmap[i] >= 1:
+				skymap[i] = skymap[i]/hitmap[i]
+			else:
+				skymap[i] = hp.pixelfunc.UNSEEN
+				hitmap[i] = hp.pixelfunc.UNSEEN
+
+		self.write_healpix_map(skymap,prefix,outputname+'_skymap.fits')
+		self.write_healpix_map(hitmap,prefix,outputname+'_hitmap.fits')
+
+		hp.mollview(skymap)
+		plt.savefig(outputname+'_skymap.png')
+		plt.close()
+		plt.clf()
+		hp.mollview(hitmap,xsize=1400,norm='log')
+		plt.savefig(outputname+'_hitmap.png')
+		if plotlimit != 0.0:
+			hp.gnomview(skymap,rot=centralpos,reso=5,min=-plotlimit,max=plotlimit)
 		else:
-			if freqrange == 0.0:
-				freqrange = fileinfo[2]
-			if freqstep == 0.0:
-				freqstep = fileinfo[3]
-			if centerfreqs == []:
-				centerfreqs = fileinfo[1]
-			if starttime == 0.0:
-				starttime = fileinfo[4]
+			hp.gnomview(skymap,rot=centralpos,reso=5)
+		plt.savefig(outputname+'_zoom.png')
+		plt.close()
+		plt.clf()
+
+		return
+
+
+	def analyse_swp(self, prefix, filename, datarate=0,freqrange=0.0,freqstep=0.0,centerfreqs=[], lo=4.99e9,starttime=0.0,kidparams=[]):
+
+		if kidparams == []:
+			# We have an old style file, read in the parameters from the filename
+			fileinfo = parse_filename(filename)
+			# [fileformat, freqs, samplespeed, date]
+			if fileinfo[0] != 'swp':
+				print('Wrong file format!')
+				return 0
+			else:
+				if freqrange == 0.0:
+					freqrange = fileinfo[2]
+				if freqstep == 0.0:
+					freqstep = fileinfo[3]
+				if centerfreqs == []:
+					centerfreqs = fileinfo[1]
+				if starttime == 0.0:
+					starttime = fileinfo[4]
+		else:
+			kids = read_kidslist(kidparams)
+			print(kids)
+			centerfreqs = kids['kids_freqs']
+			lo = kids['sg_freq']
+
+		# TODO Need to modify this to get the frequency info from somewhere other than the filename!
+		
 		print(freqrange)
 		print(freqstep)
 		print(centerfreqs)
@@ -439,6 +497,54 @@ class gbreduce:
 		print(min(timestream))
 		print(max(timestream))
 
+		# Fetch the dome data
+		domet, domef = fetch_domedata(self.domedir, min(timestream), max(timestream))
+		print(domet)
+		print(domef)
+		# exit()
+		flag = np.ones(len(timestream))
+		if len(domet) >= 1:
+			# We can use the dome opening/closing to do an initial cut of the data
+			dometimes_pos = 0
+			for i in range(0,len(timestream)):
+				while(domet[dometimes_pos] < timestream[i] and dometimes_pos < len(domet)-1):
+					dometimes_pos += 1
+				flag[i] = int(domef[dometimes_pos-1])
+				# print(timestream[i], flag[i], domet[dometimes_pos])
+				# if flag[i] > 0:
+				# 	exit()
+
+		# Fetch the temperature data
+		temperaturet, temperaturevals = fetch_tempdata(self.tempdir, min(timestream), max(timestream))
+		# print(temperaturet)
+		# print(temperaturevals)
+		if len(temperaturet) >= 1:
+			# We can use the dome opening/closing to do an initial cut of the data
+			temptimes_pos = 0
+			for i in range(0,len(timestream)):
+				while(temperaturet[temptimes_pos] < timestream[i] and temptimes_pos < len(temperaturet)-1):
+					temptimes_pos += 1
+				if temperaturevals[temptimes_pos][1] > 0.275:
+					# print(temperaturet[temptimes_pos])
+					# print(prefix)
+					# return 100
+					flag[i] = 0
+		# return 0
+		# If the elevation parameter isn't set, read in the encoder values
+		if el == []:
+			eltimes, eldata = fetch_eldata(self.eldir, min(timestream), max(timestream), compressed=self.elcompressed)
+			el = np.zeros(len(timestream))
+			eltimes_pos = 0
+			for i in range(0,len(timestream)):
+				# print(eltimes_pos)
+				# print(eltimes)
+				while(eltimes[eltimes_pos] < timestream[i] and eltimes_pos < len(eltimes)-1):
+					# if eltimes_pos >= len(eltimes):
+					# 	break
+					eltimes_pos += 1
+
+				el[i] = (eldata[eltimes_pos-1])+90.0 # Convert from zenith angle to elevation
+
 		# Either get azimuth data, or make some up...
 		aztimes, azdata = fetch_azdata(self.azdir, min(timestream), max(timestream), compressed=False)
 		# print(azdata)
@@ -457,25 +563,9 @@ class gbreduce:
 			az = np.zeros(len(timestream))
 			aztimes_pos = 0
 			for i in range(0,len(timestream)):
-				while(aztimes[aztimes_pos] < timestream[i] and aztimes_pos < len(aztimes)):
+				while(aztimes[aztimes_pos] < timestream[i] and aztimes_pos < len(aztimes)-1):
 					aztimes_pos += 1
 				az[i] = azdata[aztimes_pos-1]
-
-		# If the elevation parameter isn't set, read in the encoder values
-		if el == []:
-			eltimes, eldata = fetch_eldata(self.eldir, min(timestream), max(timestream), compressed=self.elcompressed)
-			el = np.zeros(len(timestream))
-			eltimes_pos = 0
-			for i in range(0,len(timestream)):
-				# print(eltimes_pos)
-				# print(eltimes)
-				while(eltimes[eltimes_pos] < timestream[i]):
-					if eltimes_pos >= len(eltimes):
-						break
-					eltimes_pos += 1
-
-				el[i] = (eldata[eltimes_pos-1])+90.0 # Convert from zenith angle to elevation
-
 
 		t = Time(timestream, format='unix', scale='utc')
 
@@ -497,7 +587,8 @@ class gbreduce:
 				# dataset[:,pix*4+2] = abs(rewound_offpeak)
 				# dataset[:,pix*4+3] = angle(rewound_offpeak)
 
-		for pix in range(0,numpix*4):
+		# for pix in range(0,numpix*4):
+		for pix in range(0,1):
 
 			plot_tod(dataset[:,pix+1],self.outdir+prefix+plotext+'/plot_'+str(pix+1)+'.png')
 
@@ -525,8 +616,9 @@ class gbreduce:
 			skymap = np.zeros(self.npix, dtype=np.float)
 			hitmap = np.zeros(self.npix, dtype=np.float)
 			for i in range(0,len(healpix_pixel)):
-				skymap[healpix_pixel[i]] = skymap[healpix_pixel[i]] + dataset[i,pix+1]
-				hitmap[healpix_pixel[i]] = hitmap[healpix_pixel[i]] + 1
+				if flag[i] == 1:
+					skymap[healpix_pixel[i]] = skymap[healpix_pixel[i]] + dataset[i,pix+1]
+					hitmap[healpix_pixel[i]] = hitmap[healpix_pixel[i]] + 1
 			for i in range(0,len(skymap)):
 				if hitmap[i] >= 1:
 					skymap[i] = skymap[i]/hitmap[i]

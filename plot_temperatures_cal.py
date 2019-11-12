@@ -15,9 +15,9 @@ for line in infiles:
 
 # Settings for the different postfixes
 postfixes = ['_detector.cal', '_shield.cal']#, '_he10.cal'
-dtypes = [{'names':('date','unix','t1','t2','t3'),'formats':('S1','f','f','f','f')},\
-{'names':('date','unix','t1','t2','t3','t4','t5','t6','t7','t8'),'formats':('S1','f','f','f','f','f','f','f','f','f')}]#\
-#{'names':('date','unix','string','t1','t2','t3','string2','t4','t5','t6','t7','t8','t9','t10'),'formats':('S1','f','S1','f','f','f','S1','f','f','f','f','f','f','f')},]
+dtypes = [{'names':('date','unix','t1','t2','t3'),'formats':('S1','d','f','f','f')},\
+{'names':('date','unix','t1','t2','t3','t4','t5','t6','t7','t8'),'formats':('S1','d','f','f','f','f','f','f','f','f')}]#\
+#{'names':('date','unix','string','t1','t2','t3','string2','t4','t5','t6','t7','t8','t9','t10'),'formats':('S1','d','S1','f','f','f','S1','f','f','f','f','f','f','f')},]
 numtemps=[3,8]#,10
 
 for prefix in prefixes:

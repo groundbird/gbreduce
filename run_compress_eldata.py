@@ -45,12 +45,12 @@ import os
 # indir = '/Users/mpeel/Desktop/eltest/'
 # compress_and_plot_eldata(indir,'el_2019-10-15_rot',reload=True)
 
-basedir = '/net/nas/proyectos/cosmology/groundbird/'
-# basedir = '/Volumes/iOmega/GroundBIRD/'
+# basedir = '/net/nas/proyectos/cosmology/groundbird/'
+basedir = '/Volumes/iOmega/GroundBIRD/'
 
 indir = basedir+'data/logbdata/el_enc/2019/'
 folders = [f.path for f in os.scandir(indir) if f.is_dir() ]
-redo_all = True
+redo_all = False
 print(folders)
 for folder in folders:
 	# print(folder)
@@ -64,21 +64,19 @@ for folder in folders:
 			print(folder2)
 			compress_and_plot_eldata(folder2+'/',out_prefix)
 
-
-
-indir = basedir+'data/logbdata/az_enc/2019/'
-folders = [f.path for f in os.scandir(indir) if f.is_dir() ]
-redo_all = True
-print(folders)
-for folder in folders:
-	# print(folder)
-	folders2 = [f.path for f in os.scandir(folder) if f.is_dir() ]
-	for folder2 in folders2:
-		# print(folder2)
-		# print((folder2+'/')[-3:-1])
-		# print(folder2[-5:-3])
-		out_prefix = 'az_'+str(2019)+'-'+str(folder2[-5:-3])+'-'+str((folder2+'/')[-3:-1])
-		if redo_all == True or (redo_all == False and not os.path.exists(folder2+'/'+out_prefix+'.txt.gz')):
-			print(folder2)
-			compress_and_plot_azdata(folder2+'/',out_prefix,reload=True)
-			# exit()
+# indir = basedir+'data/logbdata/az_enc/2019/'
+# folders = [f.path for f in os.scandir(indir) if f.is_dir() ]
+# redo_all = True
+# print(folders)
+# for folder in folders:
+# 	# print(folder)
+# 	folders2 = [f.path for f in os.scandir(folder) if f.is_dir() ]
+# 	for folder2 in folders2:
+# 		# print(folder2)
+# 		# print((folder2+'/')[-3:-1])
+# 		# print(folder2[-5:-3])
+# 		out_prefix = 'az_'+str(2019)+'-'+str(folder2[-5:-3])+'-'+str((folder2+'/')[-3:-1])
+# 		if redo_all == True or (redo_all == False and not os.path.exists(folder2+'/'+out_prefix+'.txt.gz')):
+# 			print(folder2)
+# 			compress_and_plot_azdata(folder2+'/',out_prefix,reload=True)
+# 			# exit()

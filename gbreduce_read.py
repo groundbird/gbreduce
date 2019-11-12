@@ -316,6 +316,94 @@ def fetch_eldata(indir, starttime, endtime, compressed=False):
 
 	return timeset, zenith
 
+
+def fetch_domedata(indir, starttime, endtime):
+	# We should have unix time as an input, so convert that to Year/Month/day
+	# We'll assume that we'll only ever need 2 days of data at most.
+	ext = '.dat'
+	startdir = datetime.datetime.utcfromtimestamp(int(starttime)-1).strftime('%Y/%m/')
+	print(indir)
+	print(startdir)
+	try:
+		inputlist = os.listdir(indir + startdir)
+		filelist = [startdir+'/'+f for f in inputlist if ext in f]
+
+	except:
+		print('No dome data found!')
+		return []
+
+	enddir = datetime.datetime.utcfromtimestamp(int(endtime)+1).strftime('%Y/%m/')
+	print(startdir)
+	print(enddir)
+	if enddir != startdir:
+		print('Hi')
+		# Also need to append these
+		try:
+			inputlist = os.listdir(indir + enddir)
+			for file in inputlist:
+				if file not in filelist:
+					filelist.append(enddir+'/'+file)
+		except:
+			print('No dome data found for the second day!')
+	print(filelist)
+	timeset = []
+	valset = []
+	# We can just read in all the data and return it, since there isn't that much
+	for file in filelist:
+		data = np.loadtxt(indir+file,unpack=False,dtype={'names':('date','unix','val1','val2','val3','val4','water'),'formats':('S1','d','S6','S6','S6','S6','S3')})
+		for line in data:
+			timeset.append(line['unix'])
+			print(line['val1'].decode('ascii'))
+			if line['val1'].decode('ascii') == 'Interm' or line['val1'].decode('ascii') == 'Closed':
+				print(0)
+				valset.append(0)
+			else:
+				print(1)
+				valset.append(1)
+
+	return timeset, valset
+
+def fetch_tempdata(indir, starttime, endtime):
+	# We should have unix time as an input, so convert that to Year/Month/day
+	# We'll assume that we'll only ever need 2 days of data at most.
+	ext = 'detector.cal'
+	startdir = datetime.datetime.utcfromtimestamp(int(starttime)-1).strftime('%Y/%m/')
+	print(indir+startdir)
+	try:
+		inputlist = os.listdir(indir + startdir)
+		print(inputlist)
+		filelist = [startdir+'/'+f for f in inputlist if ext in f]
+
+	except:
+		print('No temperature data found!')
+		return []
+
+	enddir = datetime.datetime.utcfromtimestamp(int(endtime)+1).strftime('%Y/%m/')
+	print(startdir)
+	print(enddir)
+	if enddir != startdir:
+		print('Hi')
+		# Also need to append these
+		try:
+			inputlist = os.listdir(indir + enddir)
+			for file in inputlist:
+				if file not in filelist:
+					filelist.append(enddir+'/'+file)
+		except:
+			print('No temperature data found for the second day!')
+	print(filelist)
+	timeset = []
+	valset = []
+	# We can just read in all the data and return it, since there isn't that much
+	for file in filelist:
+		data = np.loadtxt(indir+file,unpack=False,dtype={'names':('date','unix','t1','t2','t3'),'formats':('S1','d','f','f','f')})
+		for line in data:
+			timeset.append(line['unix'])
+			valset.append([line['t1'],line['t2'],line['t3']])
+
+	return timeset, valset
+
+
 # From rhea_comm.reader_tod.header_read()
 def read_rhea_header(fname):
 	time = 0
