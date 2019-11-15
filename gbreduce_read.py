@@ -36,6 +36,9 @@ def get_az_data(filename):
 	unixtime = float(rotlog.start_time)
 	datalength = rotlog.length
 	times, nr, roff, vals = rotlog.read_file()
+	# for i in range(0,1000):
+	# 	print(str(times[i]) + '-' + str(nr[i]) + ' - ' + str(roff[i]) + ' - ' + str(vals[i]))
+	# exit()
 	# numbytes, version, unixtime, headertxt = tmped.get_header()
 	starttime = float(times[0])
 	times_new = (np.asarray(times).astype(float) - starttime)*0.001 + unixtime
@@ -51,7 +54,7 @@ def compress_and_plot_azdata(indir,out_prefix,reload=False,savedata=True):
 		times, vals = np.loadtxt(indir+out_prefix+'.txt.gz',unpack=True)
 	else:
 		files = sorted(Path(indir).rglob('*.dat.xz'))
-		print(files)
+		# print(files)
 		times = []
 		vals = []
 		times_sync = []
@@ -91,8 +94,8 @@ def fetch_azdata(indir, starttime, endtime, compressed=False):
 	else:
 		ext = '.dat'
 	startdir = datetime.datetime.utcfromtimestamp(int(starttime)-1).strftime('%Y/%m/%d')
-	print(indir)
-	print(startdir)
+	# print(indir)
+	# print(startdir)
 	try:
 		inputlist = os.listdir(indir + startdir)
 		filelist = [startdir+'/'+f for f in inputlist if ext in f]
@@ -102,8 +105,8 @@ def fetch_azdata(indir, starttime, endtime, compressed=False):
 		return []
 
 	enddir = datetime.datetime.utcfromtimestamp(int(endtime)+1).strftime('%Y/%m/%d')
-	print(startdir)
-	print(enddir)
+	# print(startdir)
+	# print(enddir)
 	if enddir != startdir:
 		# print('Hi')
 		# Also need to append these
@@ -130,12 +133,12 @@ def fetch_azdata(indir, starttime, endtime, compressed=False):
 		for file in filelist:
 			time = file[-18:-12]
 			date = file[0:10]
-			print(date[0:4]+' ' + date[5:7] + ' ' + date[8:10] +" " + time[0:2] + ' ' + time[2:4] + ' ' + time[4:6])
+			# print(date[0:4]+' ' + date[5:7] + ' ' + date[8:10] +" " + time[0:2] + ' ' + time[2:4] + ' ' + time[4:6])
 			timestamp = datetime.datetime(int(date[0:4]),int(date[5:7]),int(date[8:10]),int(time[0:2]),int(time[2:4]),int(time[4:6]),tzinfo=pytz.timezone('UTC')).timestamp()
 			starttimes.append(timestamp)
-			print(starttime)
-			print(timestamp)
-			print(endtime)
+			# print(starttime)
+			# print(timestamp)
+			# print(endtime)
 			if timestamp > starttime and timestamp < endtime:
 				use_files[-1] = 1
 				use_files.append(1)
@@ -148,15 +151,83 @@ def fetch_azdata(indir, starttime, endtime, compressed=False):
 		use_files = np.asarray(use_files).astype(int)
 		starttimes = np.asarray(starttimes)
 		filelist = np.asarray(filelist)
-		print(starttimes[use_files>0])
+		# print(starttimes[use_files>0])
 
 		for file in filelist[use_files > 0]:
-			print(file)
+			# print(file)
 			times, azimuths = get_az_data(indir+file)
 			timeset = list(timeset) + list(times)
 			az = list(az) + list(azimuths)
 
 	return timeset, az
+
+# Find the sync time from the azimuth data. Requires an approximate start time to start searching from.
+def find_az_synctime(indir, starttime, synctime):
+	# We should have unix time as an input, so convert that to Year/Month/day
+	# We'll assume that we'll only ever need 2 days of data at most.
+	ext = '.dat'
+	startdir = datetime.datetime.utcfromtimestamp(int(starttime)-1).strftime('%Y/%m/%d')
+	try:
+		inputlist = os.listdir(indir + startdir)
+		filelist = [startdir+'/'+f for f in inputlist if ext in f]
+
+	except:
+		print('No azimuth data found!')
+		return []
+
+	enddir = datetime.datetime.utcfromtimestamp(int(starttime)+24*60*60).strftime('%Y/%m/%d')
+	if enddir != startdir:
+		try:
+			inputlist = os.listdir(indir + enddir)
+			filelist = filelist + [enddir+'/'+f for f in inputlist if ext in f]
+		except:
+			print('No azimuth data found for the second day!')
+
+	# We need to be more picky to save time.
+	# First calculate the start times for each file
+	starttimes = []
+	use_files = []
+	for file in filelist:
+		time = file[-18:-12]
+		date = file[0:10]
+		# print(date[0:4]+' ' + date[5:7] + ' ' + date[8:10] +" " + time[0:2] + ' ' + time[2:4] + ' ' + time[4:6])
+		timestamp = datetime.datetime(int(date[0:4]),int(date[5:7]),int(date[8:10]),int(time[0:2]),int(time[2:4]),int(time[4:6]),tzinfo=pytz.timezone('UTC')).timestamp()
+		starttimes.append(timestamp)
+		# print(starttime)
+		# print(timestamp)
+		# print(endtime)
+		if timestamp > starttime:
+			use_files[-1] = 1
+			use_files.append(1)
+		else:
+			use_files.append(0)
+	if np.sum(use_files) == 0:
+		# We have the case that the entire dataset is in one file, just use that one.
+		use_files[-2] = 1
+
+	use_files = np.asarray(use_files).astype(int)
+	starttimes = np.asarray(starttimes)
+	filelist = np.asarray(filelist)
+	# print(starttimes[use_files>0])
+
+	synctimestamp = 0
+	for file in filelist[use_files > 0]:
+		# print(file)
+		rotlog = RotLog_file.RotLog_file(indir+file)
+		unixtime = float(rotlog.start_time)
+		datalength = rotlog.length
+		times, nr, roff, vals = rotlog.read_file()
+		if synctime in nr:
+			for i in range(0,len(times)):
+				if nr[i] == synctime:
+					synctimestamp = (float(times[i]) - float(times[0]))*0.001 + unixtime
+					break
+			break
+		else:
+			continue
+
+	return synctimestamp
+
 
 def get_el_data(filename):
 	tmped = eldata.ElData(filename)
@@ -255,8 +326,8 @@ def fetch_eldata(indir, starttime, endtime, compressed=False):
 	else:
 		ext = '.dat'
 	startdir = datetime.datetime.utcfromtimestamp(int(starttime)-1).strftime('%Y/%m/%d')
-	print(indir)
-	print(startdir)
+	# print(indir)
+	# print(startdir)
 	try:
 		inputlist = os.listdir(indir + startdir)
 		filelist = [startdir+'/'+f for f in inputlist if ext in f]
@@ -266,10 +337,10 @@ def fetch_eldata(indir, starttime, endtime, compressed=False):
 		return []
 
 	enddir = datetime.datetime.utcfromtimestamp(int(endtime)+1).strftime('%Y/%m/%d')
-	print(startdir)
-	print(enddir)
+	# print(startdir)
+	# print(enddir)
 	if enddir != startdir:
-		print('Hi')
+		# print('Hi')
 		# Also need to append these
 		try:
 			inputlist = os.listdir(indir + enddir)
@@ -322,8 +393,8 @@ def fetch_domedata(indir, starttime, endtime):
 	# We'll assume that we'll only ever need 2 days of data at most.
 	ext = '.dat'
 	startdir = datetime.datetime.utcfromtimestamp(int(starttime)-1).strftime('%Y/%m/')
-	print(indir)
-	print(startdir)
+	# print(indir)
+	# print(startdir)
 	try:
 		inputlist = os.listdir(indir + startdir)
 		filelist = [startdir+'/'+f for f in inputlist if ext in f]
@@ -333,10 +404,10 @@ def fetch_domedata(indir, starttime, endtime):
 		return []
 
 	enddir = datetime.datetime.utcfromtimestamp(int(endtime)+1).strftime('%Y/%m/')
-	print(startdir)
-	print(enddir)
+	# print(startdir)
+	# print(enddir)
 	if enddir != startdir:
-		print('Hi')
+		# print('Hi')
 		# Also need to append these
 		try:
 			inputlist = os.listdir(indir + enddir)
@@ -353,12 +424,12 @@ def fetch_domedata(indir, starttime, endtime):
 		data = np.loadtxt(indir+file,unpack=False,dtype={'names':('date','unix','val1','val2','val3','val4','water'),'formats':('S1','d','S6','S6','S6','S6','S3')})
 		for line in data:
 			timeset.append(line['unix'])
-			print(line['val1'].decode('ascii'))
+			# print(line['val1'].decode('ascii'))
 			if line['val1'].decode('ascii') == 'Interm' or line['val1'].decode('ascii') == 'Closed':
-				print(0)
+				# print(0)
 				valset.append(0)
 			else:
-				print(1)
+				# print(1)
 				valset.append(1)
 
 	return timeset, valset
@@ -371,7 +442,7 @@ def fetch_tempdata(indir, starttime, endtime):
 	print(indir+startdir)
 	try:
 		inputlist = os.listdir(indir + startdir)
-		print(inputlist)
+		# print(inputlist)
 		filelist = [startdir+'/'+f for f in inputlist if ext in f]
 
 	except:
@@ -379,10 +450,10 @@ def fetch_tempdata(indir, starttime, endtime):
 		return []
 
 	enddir = datetime.datetime.utcfromtimestamp(int(endtime)+1).strftime('%Y/%m/')
-	print(startdir)
-	print(enddir)
+	# print(startdir)
+	# print(enddir)
 	if enddir != startdir:
-		print('Hi')
+		# print('Hi')
 		# Also need to append these
 		try:
 			inputlist = os.listdir(indir + enddir)
@@ -531,8 +602,13 @@ def read_rhea_data(fname, length=None, offset=0):
 		# print(np.shape(datum))
 		# print(datum)
 		# print(len(datum))
+		# i += 1
+		# if i > 1000:
+		# 	exit()
 		datum2 = datum[1].copy()
 		datum2.insert(0,datum[0])
+		datum2.append(datum[2])
+		datum2.append(datum[3])
 		dataset.append(datum2)
 
 		# datum2 = np.asarray(datum[1])

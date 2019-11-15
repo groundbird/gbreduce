@@ -17,7 +17,7 @@ from astropy.coordinates import SkyCoord, EarthLocation, AltAz, Galactic, ICRS, 
 from astropy.time import Time
 from astropy.coordinates import Angle
 import astropy_speedups
-from scipy import optimize
+from scipy import optimize, signal
 import os
 from astroutils import *
 import datetime
@@ -149,14 +149,28 @@ class gbreduce:
 		plt.savefig(outputname+'_skymap.png')
 		plt.close()
 		plt.clf()
+		hp.mollview(skymap,norm='hist')
+		plt.savefig(outputname+'_skymap_hist.png')
+		plt.close()
+		plt.clf()
 		hp.mollview(hitmap,xsize=1400,norm='log')
 		plt.savefig(outputname+'_hitmap.png')
+		hp.mollview(hitmap,xsize=1400,max=np.median(hitmap[hitmap != hp.pixelfunc.UNSEEN]))
+		plt.savefig(outputname+'_hitmap_median.png')
 		if plotlimit != 0.0:
 			hp.gnomview(skymap,rot=centralpos,reso=5,min=-plotlimit,max=plotlimit)
 		else:
 			hp.gnomview(skymap,rot=centralpos,reso=5)
 		plt.savefig(outputname+'_zoom.png')
 		plt.close()
+		plt.clf()
+
+
+		hitmap_128 = hp.ud_grade(hitmap, nside_out=128,power=-2)
+		hp.mollview(hitmap_128,xsize=1400,norm='log')
+		plt.savefig(outputname+'_hitmap_128.png')
+		hp.mollview(hitmap,xsize=1400,max=np.median(hitmap_128[hitmap_128 != hp.pixelfunc.UNSEEN]))
+		plt.savefig(outputname+'_hitmap_128_median.png')
 		plt.clf()
 
 		return
@@ -186,12 +200,12 @@ class gbreduce:
 			centerfreqs = kids['kids_freqs']
 			lo = kids['sg_freq']
 
-		# TODO Need to modify this to get the frequency info from somewhere other than the filename!
-		
-		print(freqrange)
-		print(freqstep)
-		print(centerfreqs)
-		print(starttime)
+			# TODO Need to modify this to get the frequency info from somewhere other than the filename!
+
+			print(freqrange)
+			print(freqstep)
+			print(centerfreqs)
+			print(starttime)
 		# Sort out the output directories
 		if prefix[-1] != '/':
 			prefix = prefix + "/"
@@ -239,11 +253,20 @@ class gbreduce:
 		if self.use_mkidpylibs == True:
 			kid = klib.kidana.KidAnalyzer()
 			paramset = []
-			for i in range(len(centerfreqs)):
+			for i in range(len(centerfreqs)*2):
 				kid.swpfromfile('rhea',filename,lo,i)
 				kid.swp.fitIQ(nfwhm=3, fitter='gaolinbg')
 				# kid.swp.fitresult.report()
 				mkid_fit_params = kid.swp.fitresult.values()
+
+				fig,ax = klib.plotter.plotSwp(kid.swp,kind='rawdata',title='rawdata',color='blue',ls=':',lw=1,marker='.')
+				klib.plotter.plotSwp(kid.swp,kind='fitdata.rawdata',ax=ax,color='red',marker='',lw=2,ls='-',)
+				fig.savefig(self.outdir+prefix+plotext+'raw_kidfit_'+str(i)+'.png')
+				fig.clf()
+				fig,ax = klib.plotter.plotSwp(kid.swp,kind='rwdata',title='rwdata',color='blue',ls=':',lw=1,marker='.')
+				klib.plotter.plotSwp(kid.swp,kind='fitdata.rwdata',ax=ax,color='red',marker='',lw=2,ls='-',)
+				fig.savefig(self.outdir+prefix+plotext+'rw_kidfit_'+str(i)+'.png')
+
 				print(mkid_fit_params)
 				# print(mkid_fit_params['c'])
 				# params = np.array([mkid_fit_params['absa'], mkid_fit_params['arga'], mkid_fit_params['tau']*1e7, mkid_fit_params['c']*1e8, mkid_fit_params['fr']*1e-9, mkid_fit_params['Qr']*1e-4, mkid_fit_params['Qc']*1e-4, mkid_fit_params['phi0']])
@@ -420,6 +443,7 @@ class gbreduce:
 		ensure_dir(self.outdir+prefix)
 		ensure_dir(self.outdir+prefix+plotext)
 
+		on_channels = [0,2,4,6]
 		if kidparams == []:
 			# We have an old style file, read in the parameters from the filename
 			fileinfo = parse_filename(filename)
@@ -439,7 +463,8 @@ class gbreduce:
 			print(kids)
 			centerfreqs = kids['kids_freqs']
 			lo = kids['sg_freq']
-			# exit()
+			on_channels=kids['kids']
+
 		print(datarate)
 		print(centerfreqs)
 		print(starttime)
@@ -475,7 +500,23 @@ class gbreduce:
 
 		dataset = read_rhea_data(filename)
 		# dataset = read_rhea_data(swpname)
-		print(dataset)
+		# print(dataset)
+		startsync = -1
+		i=0
+		while startsync == -1:
+			startsync = dataset[i,-2]
+			i+=1
+		precount = i
+		print(startsync)
+		endsync = dataset[-1,-2]
+		print(endsync)
+
+		startsynctime = find_az_synctime(self.azdir, starttime-100, startsync)
+		print(startsynctime)
+		print(float(precount/datarate))
+		starttime = startsynctime - float(precount/datarate)
+		print(starttime)
+
 		# Approximate rescale
 		dataset[:,1:] /= ((2**28) * 200.e6 / datarate)
 		# Trim the first and last entries, as they can be bad.
@@ -494,14 +535,11 @@ class gbreduce:
 		# Calculate the timing
 		numsamples = len(dataset[:])
 		timestream = starttime + np.arange(numsamples)/(datarate)
-		print(min(timestream))
-		print(max(timestream))
+		# print(min(timestream))
+		# print(max(timestream))
 
 		# Fetch the dome data
 		domet, domef = fetch_domedata(self.domedir, min(timestream), max(timestream))
-		print(domet)
-		print(domef)
-		# exit()
 		flag = np.ones(len(timestream))
 		if len(domet) >= 1:
 			# We can use the dome opening/closing to do an initial cut of the data
@@ -510,26 +548,18 @@ class gbreduce:
 				while(domet[dometimes_pos] < timestream[i] and dometimes_pos < len(domet)-1):
 					dometimes_pos += 1
 				flag[i] = int(domef[dometimes_pos-1])
-				# print(timestream[i], flag[i], domet[dometimes_pos])
-				# if flag[i] > 0:
-				# 	exit()
 
 		# Fetch the temperature data
 		temperaturet, temperaturevals = fetch_tempdata(self.tempdir, min(timestream), max(timestream))
-		# print(temperaturet)
-		# print(temperaturevals)
 		if len(temperaturet) >= 1:
 			# We can use the dome opening/closing to do an initial cut of the data
 			temptimes_pos = 0
 			for i in range(0,len(timestream)):
 				while(temperaturet[temptimes_pos] < timestream[i] and temptimes_pos < len(temperaturet)-1):
 					temptimes_pos += 1
-				if temperaturevals[temptimes_pos][1] > 0.275:
-					# print(temperaturet[temptimes_pos])
-					# print(prefix)
-					# return 100
+				if temperaturevals[temptimes_pos][1] > 0.28:
 					flag[i] = 0
-		# return 0
+
 		# If the elevation parameter isn't set, read in the encoder values
 		if el == []:
 			eltimes, eldata = fetch_eldata(self.eldir, min(timestream), max(timestream), compressed=self.elcompressed)
@@ -578,31 +608,43 @@ class gbreduce:
 		plot_tod(skypos.dec,self.outdir+prefix+plotext+'/plot_dec.png')
 		# plot_tod(pa,self.outdir+prefix+plotext+'/plot_pa.png')
 
+
 		if swp_params != []:
-			for pix in range(0,numpix*2):
-				rewound = gao_rewind(freqs[pix],dataset[:,pix*2+1]+1j*dataset[:,pix*2+2], swp_params[pix]['arga'], swp_params[pix]['absa'], swp_params[pix]['tau'], swp_params[pix]['fr'], swp_params[pix]['Qr'], swp_params[pix]['Qc'], swp_params[pix]['phi0'])
-				# rewound_offpeak = gao_rewind(dataset[:,pix*4]+3, dataset[:,pix*4]+4, swp_params[pix]['arga'], swp_params[pix]['absa'], swp_params[pix]['tau'], swp_params[pix]['fr'], swp_params[pix]['Qr'], swp_params[pix]['Qc'], swp_params[pix]['phi0'])
-				dataset[:,pix*2+1] = abs(rewound)
-				dataset[:,pix*2+2] = angle(rewound)
-				# dataset[:,pix*4+2] = abs(rewound_offpeak)
-				# dataset[:,pix*4+3] = angle(rewound_offpeak)
+			for pix in range(0,numpix):
 
-		# for pix in range(0,numpix*4):
-		for pix in range(0,1):
+				newamp = subtract_blindtone_JS(dataset[:,pix*4+1]+1j*dataset[:,pix*4+2], dataset[:,pix*4+3]+1j*dataset[:,pix*4+4])
 
+				newamp = gao_rewind(freqs[pix],newamp, swp_params[pix]['arga'], swp_params[pix]['absa'], swp_params[pix]['tau'], swp_params[pix]['fr'], swp_params[pix]['Qr'], swp_params[pix]['Qc'], swp_params[pix]['phi0'])
+
+				dataset[:,pix*4+3] = abs(newamp)
+				dataset[:,pix*4+4] = angle(newamp)
+
+				# rewound = gao_rewind(freqs[pix],dataset[:,pix*4+1]+1j*dataset[:,pix*4+2], swp_params[pix]['arga'], swp_params[pix]['absa'], swp_params[pix]['tau'], swp_params[pix]['fr'], swp_params[pix]['Qr'], swp_params[pix]['Qc'], swp_params[pix]['phi0'])
+				# # rewound_offpeak = gao_rewind(dataset[:,pix*4]+3, dataset[:,pix*4]+4, swp_params[pix]['arga'], swp_params[pix]['absa'], swp_params[pix]['tau'], swp_params[pix]['fr'], swp_params[pix]['Qr'], swp_params[pix]['Qc'], swp_params[pix]['phi0'])
+				# dataset[:,pix*2+1] = abs(rewound)
+				# dataset[:,pix*2+2] = angle(rewound)
+				# # dataset[:,pix*4+2] = abs(rewound_offpeak)
+				# # dataset[:,pix*4+3] = angle(rewound_offpeak)
+
+		sos = signal.butter(10, 1.0, 'hp', fs=1000, output='sos')
+
+		for pix in range(0,numpix*4):
 			plot_tod(dataset[:,pix+1],self.outdir+prefix+plotext+'/plot_'+str(pix+1)+'.png')
 
-			# Correct for any offset
-			offset = np.median(dataset[:,pix+1])
-			print(offset)
-			dataset[:,pix+1] -= offset
+			# High-pass filter the data
+			dataset[:,pix+1] = signal.sosfilt(sos, dataset[:,pix+1])
+
+			# # Correct for any offset
+			# offset = np.median(dataset[:,pix+1])
+			# print(offset)
+			# dataset[:,pix+1] -= offset
 
 			# If we're looking at phase, unwind if needed
-			dataset[dataset[:,pix+1]>np.pi,pix+1] -= 2.0*np.pi
+			# dataset[dataset[:,pix+1]>np.pi,pix+1] -= 2.0*np.pi
 
 			# If we're highly negative, then we probably need to invert.
-			if np.max(dataset[:,pix+1]) < -np.min(dataset[:,pix+1])/2.0:
-				dataset[:,pix+1] = -dataset[:,pix+1]
+			# if np.max(dataset[:,pix+1]) < -np.min(dataset[:,pix+1])/2.0:
+			# 	dataset[:,pix+1] = -dataset[:,pix+1]
 
 			# Also rescale to 1.0 for now
 			# scale = np.max(dataset[:,pix+1])

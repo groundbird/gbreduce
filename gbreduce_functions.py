@@ -59,6 +59,17 @@ def gao_rewind(x, y, arga, absa, tau, fr, Qr, Qc, phi0):
 	tmp = y/absa/np.exp(-1j*(2*np.pi*x*tau-arga))
 	return (tmp-1)*Qc/Qr + 0.5
 
+# From mkid_pylibl.modIQ.py by Honda
+def subtract_blindtone_JS(mainIQ,blindIQ):
+    nz_on = 1.0/np.average(np.abs(mainIQ))*mainIQ
+    nz_off = 1.0/np.average(np.abs(blindIQ))*blindIQ
+    namp_corrected = np.abs(nz_on) - (np.abs(nz_off) - np.average(np.abs(nz_off)))
+    amp_corrected  = namp_corrected * np.average(np.abs(mainIQ))
+    nphs_corrected = np.angle(nz_on) - (np.angle(nz_off) - np.average(np.angle(nz_off)))
+    I_dash = amp_corrected*np.cos(nphs_corrected)
+    Q_dash = amp_corrected*np.sin(nphs_corrected)
+    return I_dash + 1j*Q_dash
+
 def fit_mkids(f, param):
 	# a, w, t, c, fr, qr, qc, p0 = param
 	# return a * np.exp(-2.0*np.pi*1j*(f*t-w)) * (1 + c*(f-fr) - (qr/(qc*np.exp(1j*p0)))/(1.0+2*1j*qr*((f-fr)/fr)))
