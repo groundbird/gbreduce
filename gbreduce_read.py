@@ -46,7 +46,7 @@ def get_az_data(filename):
 	# for i in range(len(times)):
 	# 	times_new.append((float(times[i]) - starttime)*0.001 + unixtime)
 
-	return list(times_new), vals
+	return list(times_new), vals, nr, roff
 
 
 def compress_and_plot_azdata(indir,out_prefix,reload=False,savedata=True):
@@ -118,6 +118,8 @@ def fetch_azdata(indir, starttime, endtime, compressed=False):
 	# print(filelist)
 	timeset = []
 	az = []
+	rot = []
+	offset = []
 	if compressed:
 		# We can just read in all the data and return it, since there isn't that much
 		for file in filelist:
@@ -155,11 +157,13 @@ def fetch_azdata(indir, starttime, endtime, compressed=False):
 
 		for file in filelist[use_files > 0]:
 			# print(file)
-			times, azimuths = get_az_data(indir+file)
+			times, azimuths, nrot, roff = get_az_data(indir+file)
 			timeset = list(timeset) + list(times)
 			az = list(az) + list(azimuths)
+			rot = list(rot) + list(nrot)
+			offset = list(offset)+list(roff)
 
-	return timeset, az
+	return timeset, az, rot, offset
 
 # Find the sync time from the azimuth data. Requires an approximate start time to start searching from.
 def find_az_synctime(indir, starttime, synctime):
@@ -257,7 +261,9 @@ def get_el_data_condensed(filename):
 	starttime = 0
 	times_sync = []
 	vals_sync = []
-	for i in range(0,tmped._length):
+	# length = tmped.get_length()
+	# print(length)
+	for i in range(0,tmped.get_length()):
 		try:
 			data = tmped.get_data(i)
 			if data[2].name == 'DATA':
@@ -280,7 +286,7 @@ def compress_and_plot_eldata(indir,out_prefix,reload=False,savedata=True):
 	if reload:
 		times, vals, zenithdistance = np.loadtxt(indir+out_prefix+'.txt.gz',unpack=True)
 	else:
-		files = sorted(Path(indir).rglob('*.dat'))
+		files = sorted(Path(indir).rglob('*.dat.xz'))
 		print(files)
 		times = []
 		vals = []
@@ -326,8 +332,8 @@ def fetch_eldata(indir, starttime, endtime, compressed=False):
 	else:
 		ext = '.dat'
 	startdir = datetime.datetime.utcfromtimestamp(int(starttime)-1).strftime('%Y/%m/%d')
-	# print(indir)
-	# print(startdir)
+	print(indir)
+	print(startdir)
 	try:
 		inputlist = os.listdir(indir + startdir)
 		filelist = [startdir+'/'+f for f in inputlist if ext in f]
@@ -337,8 +343,8 @@ def fetch_eldata(indir, starttime, endtime, compressed=False):
 		return []
 
 	enddir = datetime.datetime.utcfromtimestamp(int(endtime)+1).strftime('%Y/%m/%d')
-	# print(startdir)
-	# print(enddir)
+	print(startdir)
+	print(enddir)
 	if enddir != startdir:
 		# print('Hi')
 		# Also need to append these
@@ -365,12 +371,17 @@ def fetch_eldata(indir, starttime, endtime, compressed=False):
 		starttimes = []
 		use_files = []
 		for file in filelist:
-			time = file[-15:-9]
+			print(file)
+			time = file[-18:-12]
 			date = file[0:10]
-			# print(date[0:4]+' ' + date[5:7] + ' ' + date[8:10] +" " + time[0:2] + ' ' + time[2:4] + ' ' + time[4:6])
+			print(date[0:4]+' ' + date[5:7] + ' ' + date[8:10] +" " + time[0:2] + ' ' + time[2:4] + ' ' + time[4:6])
 			timestamp = datetime.datetime(int(date[0:4]),int(date[5:7]),int(date[8:10]),int(time[0:2]),int(time[2:4]),int(time[4:6]),tzinfo=pytz.timezone('UTC')).timestamp()
 			starttimes.append(timestamp)
+			print(timestamp)
+			print(starttime)
+			print(endtime)
 			if timestamp > starttime and timestamp < endtime:
+				print('yes')
 				use_files[-1] = 1
 				use_files.append(1)
 			else:
@@ -381,7 +392,10 @@ def fetch_eldata(indir, starttime, endtime, compressed=False):
 
 		for file in filelist[use_files > 0]:
 			print(file)
+			# try:
 			times, vals, timesync, valsync = get_el_data_condensed(indir+file)
+			# except:
+				# continue
 			timeset = list(timeset) + list(times)
 			zenith = list(zenith) + list((np.asarray(vals).copy()-9113.0)/900.0)
 
@@ -393,8 +407,8 @@ def fetch_domedata(indir, starttime, endtime):
 	# We'll assume that we'll only ever need 2 days of data at most.
 	ext = '.dat'
 	startdir = datetime.datetime.utcfromtimestamp(int(starttime)-1).strftime('%Y/%m/')
-	# print(indir)
-	# print(startdir)
+	print(indir)
+	print(startdir)
 	try:
 		inputlist = os.listdir(indir + startdir)
 		filelist = [startdir+'/'+f for f in inputlist if ext in f]
@@ -421,16 +435,20 @@ def fetch_domedata(indir, starttime, endtime):
 	valset = []
 	# We can just read in all the data and return it, since there isn't that much
 	for file in filelist:
+		print(file)
 		data = np.loadtxt(indir+file,unpack=False,dtype={'names':('date','unix','val1','val2','val3','val4','water'),'formats':('S1','d','S6','S6','S6','S6','S3')})
-		for line in data:
-			timeset.append(line['unix'])
-			# print(line['val1'].decode('ascii'))
-			if line['val1'].decode('ascii') == 'Interm' or line['val1'].decode('ascii') == 'Closed':
-				# print(0)
-				valset.append(0)
-			else:
-				# print(1)
-				valset.append(1)
+		# print(data)
+		# print(data.size)
+		if data.size > 1:
+			for line in data:
+				timeset.append(line['unix'])
+				# print(line['val1'].decode('ascii'))
+				if line['val1'].decode('ascii') == 'Interm' or line['val1'].decode('ascii') == 'Closed':
+					# print(0)
+					valset.append(0)
+				else:
+					# print(1)
+					valset.append(1)
 
 	return timeset, valset
 
@@ -556,7 +574,10 @@ def read_kidslist(filename):
 		kiddict = json.load(f)
 	# Rescale frequencies so they are all in Hz
 	kiddict['kids_freqs'] = np.asarray(kiddict['kids_freqs']) * 1e6
-	kiddict['blinds_freqs'] = np.asarray(kiddict['blinds_freqs']) * 1e6
+	if 'blinds_freqs' in kiddict.keys():
+		kiddict['blinds_freqs'] = np.asarray(kiddict['blinds_freqs']) * 1e6
+	elif 'blinds_relfreqs' in kiddict.keys():
+		kiddict['blinds_freqs'] = ((np.asarray(kiddict['kids_freqs'])/1e6) + np.asarray(kiddict['blinds_relfreqs'])) * 1e6
 	return kiddict
 
 def read_rhea_swp_data(fname, length=None, offset=0):

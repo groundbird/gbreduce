@@ -244,3 +244,31 @@ def Fit_7para(f, t, **kwargs):
 	print('Fit_7para')
 	print(fit_report(out))
 	return out
+
+def subtractbaseline(data, option=0, navg=1500):
+	# Crude baseline removal
+	npoints = len(data)
+	# print(npoints)
+	for i in range(0,npoints//navg):
+		start = i*navg
+		end = ((i+1)*navg)
+		# print('start:' + str(start) + ', end: ' + str(end))
+		if option == 0:
+			data[start:end] = data[start:end] - np.median(data[start:end])
+		else:
+			xline = range(0,len(data[start:end]))
+			if len(xline) != 0:
+				A,B=curve_fit(linfit,xline,data[start:end])[0]
+				# print(A,B)
+				data[start:end] = data[start:end] - (A*xline+B)
+
+	if option == 0:
+		data[(npoints//navg)*navg-1:] = data[(npoints//navg)*navg-1:] - np.median(data[(npoints//navg)*navg-1:])
+	else:
+		xline = range(0,len(data[(npoints//navg)*navg-1:]))
+		if len(xline) != 0:
+			A,B=curve_fit(linfit,xline,data[(npoints//navg)*navg-1:])[0]
+			# print(A,B)
+			data[(npoints//navg)*navg-1:] = data[(npoints//navg)*navg-1:] - (A*xline+B)
+
+	return data

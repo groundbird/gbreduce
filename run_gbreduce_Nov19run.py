@@ -73,7 +73,7 @@ toreduce.append(['20191106/data_112555',datetime(2019,11,6,11,26,16).timestamp()
 # toreduce.append(['20191106/data_152733',datetime(2019,11,6,15,27,56).timestamp()])
 
 # Problem with SWP file?
-#toreduce.append(['20191106/data_162758',datetime(2019,11,6,16,28,18).timestamp()])
+toreduce.append(['20191106/data_162758',datetime(2019,11,6,16,28,18).timestamp()])
 toreduce.append(['20191106/data_172820',datetime(2019,11,6,17,28,42).timestamp()])
 toreduce.append(['20191106/data_182844',datetime(2019,11,6,18,29,5).timestamp()])
 toreduce.append(['20191106/data_192907',datetime(2019,11,6,19,29,29).timestamp()])
@@ -120,6 +120,7 @@ toreduce.append(['20191111/data_214403',datetime(2019,11,11,21,44,24).timestamp(
 toreduce.append(['20191111/data_224426',datetime(2019,11,11,22,44,48).timestamp()])
 toreduce.append(['20191111/data_234450',datetime(2019,11,11,23,45,12).timestamp()])
 
+# Moon is in the next one.
 toreduce.append(['20191112/data_004514',datetime(2019,11,12,0,45,35).timestamp()])
 toreduce.append(['20191112/data_014537',datetime(2019,11,12,1,45,59).timestamp()])
 toreduce.append(['20191112/data_024601',datetime(2019,11,12,2,46,23).timestamp()])
@@ -135,18 +136,20 @@ toreduce.append(['20191112/data_114935',datetime(2019,11,12,11,49,56).timestamp(
 toreduce.append(['20191112/data_124958',datetime(2019,11,12,12,50,20).timestamp()])
 toreduce.append(['20191112/data_135022',datetime(2019,11,12,13,50,45).timestamp()])
 
+# postfix='_swp_sub'
+postfix='_swp_sub100'
 skymaps = []
 hitmaps = []
-for i in range(0,4):
+for i in range(0,16):
 	for item in toreduce:
-		skymaps.append(outdir+item[0].replace('/','_')+'_swp'+'/skymap_'+str(i+1)+'.fits')
-		hitmaps.append(outdir+item[0].replace('/','_')+'_swp'+'/hitmap_'+str(i+1)+'.fits')
+		skymaps.append(outdir+item[0].replace('/','_')+postfix+'/skymap_'+str(i+1)+'.fits')
+		hitmaps.append(outdir+item[0].replace('/','_')+postfix+'/hitmap_'+str(i+1)+'.fits')
 	print(skymaps)
 	print(hitmaps)
 	prefix='combine'
-	outputname='201911_longrun'+str(i+1)+''
-	run.combine_sky_maps(skymaps,hitmaps,prefix,outputname,centralpos=(0,0),plotlimit=0.0)
-exit()
+	outputname='201911_longrun_'+postfix+str(i+1)+''
+# 	run.combine_sky_maps(skymaps,hitmaps,prefix,outputname,centralpos=(0,0),plotlimit=0.0)
+# exit()
 
 
 
@@ -163,15 +166,15 @@ exit()
 for item in toreduce:
 	folder = 'kiddata/'+item[0]+'/'
 	starttime = item[1]
-	name=item[0].replace('/','_')+'_swp'
+	name=item[0].replace('/','_')+'_swp_sub100_modaz'
 	swpfile = 'swp.rawdata'
 	todfile = 'tod.rawdata'
 	kidparams = 'kids.list'
 	print(starttime)
-	swp_params = run.analyse_swp(name,basedir+folder+swpfile,kidparams=basedir+folder+kidparams)
-	print(swp_params)
+	# swp_params = run.analyse_swp(name,basedir+folder+swpfile,kidparams=basedir+folder+kidparams)
+	# print(swp_params)
 	# exit()
-	# swp_params=[]
+	swp_params=[]
 	tod_analysis = run.analyse_tod(name,basedir+folder+todfile,kidparams=basedir+folder+kidparams,swp_params=swp_params,starttime=starttime)
-	# exit()
+	exit()
 

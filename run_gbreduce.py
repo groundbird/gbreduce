@@ -31,7 +31,10 @@ azdir = basedir+'logbdata/az_enc/'
 # Set this to the location of the elevation encoder data (in compressed format if elcompressed=True)
 # eldir = '/Users/mpeel/Documents/groundbird/data/elevation/'
 eldir = basedir+'logbdata/el_enc/'
-elcompressed=True
+elcompressed=False
+domedir = basedir+'logdata/dome/'
+tempdir = basedir+'logdata/thermo/'
+
 
 # Start the class
 run = gbreduce.gbreduce(outdir=outdir,\
@@ -39,7 +42,75 @@ run = gbreduce.gbreduce(outdir=outdir,\
 	azdir=azdir,\
 	eldir=eldir,\
 	elcompressed=elcompressed,\
+	domedir=domedir,\
+	tempdir=tempdir,\
 	nside = 512, use_mkidpylibs=True)
+
+subdir = 'kiddata/20191218/'
+folderlist = os.listdir(basedir+subdir)
+todolist = []
+for folder in folderlist:
+	if '.' not in folder:
+		subfolderlist = os.listdir(basedir+subdir+folder)
+		# search = 'PERSEUS_AZ'
+		# search = '3C84_EL'
+		# search = '3C84_OPTIMIZED'
+		# search = 'W3OH'
+		search = 'KSPS'
+		subfolderlist = [f for f in subfolderlist if search not in f]
+		if len(subfolderlist) > 2:
+			todolist.append(subdir+folder)
+		# print(subfolderlist)
+# print(folderlist)
+print(todolist)
+
+trip = 0
+for item in todolist:
+	if trip < 4:
+		trip += 1
+		continue
+	folder = item+'/'
+	print(folder)
+	print(folder[22:])
+	print(int(folder[8:12]))
+	print(int(folder[12:14]))
+	print(int(folder[14:16]))
+	print(int(folder[22:24]))
+	print(int(folder[24:26]))
+	print(int(folder[26:28]))
+	starttime = datetime(int(folder[8:12]),int(folder[12:14]),int(folder[14:16]),int(folder[22:24]),int(folder[24:26]),int(folder[26:28]),tzinfo=pytz.timezone('UTC')).timestamp()
+	name=folder[8:-1].replace('/','_')+'_swp'
+	
+	date = datetime.utcfromtimestamp(starttime)
+	print(date)
+	print(starttime)
+	print(name)
+	contents = os.listdir(basedir+folder)
+	todo = []
+	for line in contents:
+		if 'kids' in line and 'list' in line:
+			todo.append(line.replace('kids','').replace('list',''))
+	print(contents)
+	print(todo)
+	# exit()
+	for line in todo:
+		swpfile = 'swp'+line+'rawdata'
+		todfile = 'tod'+line+'rawdata'
+		kidparams = 'kids'+line+'list'
+		if '16' in line:
+			numpix=3
+		else:
+			numpix=4
+		swp_params = run.analyse_swp(name+line.replace('.',''),basedir+folder+swpfile,kidparams=basedir+folder+kidparams)
+		print(swp_params)
+		# exit()
+		# swp_params=[]
+		tod_analysis = run.analyse_tod(name+line.replace('.',''),basedir+folder+todfile,kidparams=basedir+folder+kidparams,swp_params=swp_params,starttime=starttime,numpix=numpix)
+		# exit()
+
+
+
+exit()
 
 # print(run.get_azimuth_data(1569041109.0, 1569042108.998))
 # exit()
@@ -50,21 +121,33 @@ run = gbreduce.gbreduce(outdir=outdir,\
 
 # folder = 'kiddata/20191018/data_022435/'
 # starttime = datetime(2019,10,18,2,24,35).timestamp()
-folder = 'kiddata/20191018/data_031254/'
-starttime = datetime(2019,10,18,3,13,16).timestamp()
-name='20191018_data_031254'
+
+# folder = 'kiddata/20191018/data_031254/'
+# starttime = datetime(2019,10,18,3,13,16).timestamp()
+# name='20191018_data_031254'
 
 # folder = 'kiddata/20191018/data_043458/'
 # starttime = datetime(2019,10,18,4,35,43,tzinfo=pytz.timezone('UTC')).timestamp()
 # name='20191018_data_043458'
 
+folder = 'kiddata/20191215/data_175043/'
+starttime = datetime(2019,12,15,17,50,43).timestamp()
+name='20191215_data_175043'
+
+folder = 'kiddata/20191217/data_062534/'
+starttime = datetime(2019,12,17,6,25,34).timestamp()
+name='20191217_data_062534'
+
 
 swpfile = 'swp.rawdata'
 todfile = 'tod.rawdata'
 kidparams = 'kids.list'
+postfixes = ['_16', '_32']
 print(starttime)
-swp_params=[]
-tod_analysis = run.analyse_tod(name,basedir+folder+todfile,kidparams=basedir+folder+kidparams,swp_params=swp_params,starttime=starttime)
+for postfix in postfixes:
+	swp_params = run.analyse_swp(name+postfix,basedir+folder+swpfile.replace('.',postfix+'.'),kidparams=basedir+folder+kidparams.replace('.',postfix+'.'))
+	# swp_params = []
+	tod_analysis = run.analyse_tod(name+postfix,basedir+folder+todfile.replace('.',postfix+'.'),kidparams=basedir+folder+kidparams.replace('.',postfix+'.'),swp_params=swp_params,starttime=starttime)
 exit()
 
 

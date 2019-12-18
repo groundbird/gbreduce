@@ -30,6 +30,7 @@ from gbreduce_read import *
 from rhea_comm.lib_read_rhea import *
 import mkid_pylibs as klib
 from matplotlib.gridspec import GridSpec
+from merge_az import merge_az
 
 class gbreduce:
 	def __init__(self,datadir="/net/nas/proyectos/quijote2/tod/",outdir='',azdir='',eldir='',elcompressed=False,domedir='',tempdir='',nside=512,datarate=1000,use_mkidpylibs=True):
@@ -149,10 +150,19 @@ class gbreduce:
 		plt.savefig(outputname+'_skymap.png')
 		plt.close()
 		plt.clf()
+
 		hp.mollview(skymap,norm='hist')
 		plt.savefig(outputname+'_skymap_hist.png')
 		plt.close()
 		plt.clf()
+
+		skymap[skymap != hp.pixelfunc.UNSEEN] -= np.median(skymap[skymap != hp.pixelfunc.UNSEEN])
+		std = np.std(skymap[skymap != hp.pixelfunc.UNSEEN])
+		hp.mollview(skymap,max=2.0*std,min=-2.0*std)
+		plt.savefig(outputname+'_skymap_std.png')
+		plt.close()
+		plt.clf()
+
 		hp.mollview(hitmap,xsize=1400,norm='log')
 		plt.savefig(outputname+'_hitmap.png')
 		hp.mollview(hitmap,xsize=1400,max=np.median(hitmap[hitmap != hp.pixelfunc.UNSEEN]))
@@ -177,7 +187,8 @@ class gbreduce:
 
 
 	def analyse_swp(self, prefix, filename, datarate=0,freqrange=0.0,freqstep=0.0,centerfreqs=[], lo=4.99e9,starttime=0.0,kidparams=[]):
-
+		print(prefix)
+		print(filename)
 		if kidparams == []:
 			# We have an old style file, read in the parameters from the filename
 			fileinfo = parse_filename(filename)
@@ -254,24 +265,28 @@ class gbreduce:
 			kid = klib.kidana.KidAnalyzer()
 			paramset = []
 			for i in range(len(centerfreqs)*2):
-				kid.swpfromfile('rhea',filename,lo,i)
-				kid.swp.fitIQ(nfwhm=3, fitter='gaolinbg')
-				# kid.swp.fitresult.report()
-				mkid_fit_params = kid.swp.fitresult.values()
+				try:
+					kid.swpfromfile('rhea',filename,lo,i)
+					kid.swp.fitIQ(nfwhm=3, fitter='gaolinbg')
+					# kid.swp.fitresult.report()
+					mkid_fit_params = kid.swp.fitresult.values()
 
-				fig,ax = klib.plotter.plotSwp(kid.swp,kind='rawdata',title='rawdata',color='blue',ls=':',lw=1,marker='.')
-				klib.plotter.plotSwp(kid.swp,kind='fitdata.rawdata',ax=ax,color='red',marker='',lw=2,ls='-',)
-				fig.savefig(self.outdir+prefix+plotext+'raw_kidfit_'+str(i)+'.png')
-				fig.clf()
-				fig,ax = klib.plotter.plotSwp(kid.swp,kind='rwdata',title='rwdata',color='blue',ls=':',lw=1,marker='.')
-				klib.plotter.plotSwp(kid.swp,kind='fitdata.rwdata',ax=ax,color='red',marker='',lw=2,ls='-',)
-				fig.savefig(self.outdir+prefix+plotext+'rw_kidfit_'+str(i)+'.png')
+					fig,ax = klib.plotter.plotSwp(kid.swp,kind='rawdata',title='rawdata',color='blue',ls=':',lw=1,marker='.')
+					klib.plotter.plotSwp(kid.swp,kind='fitdata.rawdata',ax=ax,color='red',marker='',lw=2,ls='-',)
+					fig.savefig(self.outdir+prefix+plotext+'raw_kidfit_'+str(i)+'.png')
+					fig.clf()
+					fig,ax = klib.plotter.plotSwp(kid.swp,kind='rwdata',title='rwdata',color='blue',ls=':',lw=1,marker='.')
+					klib.plotter.plotSwp(kid.swp,kind='fitdata.rwdata',ax=ax,color='red',marker='',lw=2,ls='-',)
+					fig.savefig(self.outdir+prefix+plotext+'rw_kidfit_'+str(i)+'.png')
 
-				print(mkid_fit_params)
-				# print(mkid_fit_params['c'])
-				# params = np.array([mkid_fit_params['absa'], mkid_fit_params['arga'], mkid_fit_params['tau']*1e7, mkid_fit_params['c']*1e8, mkid_fit_params['fr']*1e-9, mkid_fit_params['Qr']*1e-4, mkid_fit_params['Qc']*1e-4, mkid_fit_params['phi0']])
-				# print(params)
-				paramset.append(mkid_fit_params)
+					print(mkid_fit_params)
+					# print(mkid_fit_params['c'])
+					# params = np.array([mkid_fit_params['absa'], mkid_fit_params['arga'], mkid_fit_params['tau']*1e7, mkid_fit_params['c']*1e8, mkid_fit_params['fr']*1e-9, mkid_fit_params['Qr']*1e-4, mkid_fit_params['Qc']*1e-4, mkid_fit_params['phi0']])
+					# print(params)
+					paramset.append(mkid_fit_params)
+				except:
+					# Sweep fitting has failed for some reason, just use the one for the previous channel for now.
+					paramset.append(paramset[-1])
 			# exit()
 		else:
 			# dataset = dataset[1300:1800,:]
@@ -464,6 +479,9 @@ class gbreduce:
 			centerfreqs = kids['kids_freqs']
 			lo = kids['sg_freq']
 			on_channels=kids['kids']
+			print('Frequencies:')
+			print(kids['kids_freqs'])
+			print(kids['blinds_freqs'])
 
 		print(datarate)
 		print(centerfreqs)
@@ -518,7 +536,7 @@ class gbreduce:
 		print(starttime)
 
 		# Approximate rescale
-		dataset[:,1:] /= ((2**28) * 200.e6 / datarate)
+		dataset[:,1:-2] /= ((2**28) * 200.e6 / datarate)
 		# Trim the first and last entries, as they can be bad.
 		dataset = dataset[1:-1]
 		print(dataset)
@@ -535,48 +553,13 @@ class gbreduce:
 		# Calculate the timing
 		numsamples = len(dataset[:])
 		timestream = starttime + np.arange(numsamples)/(datarate)
-		# print(min(timestream))
-		# print(max(timestream))
+		print(min(timestream))
+		print(max(timestream))
 
-		# Fetch the dome data
-		domet, domef = fetch_domedata(self.domedir, min(timestream), max(timestream))
-		flag = np.ones(len(timestream))
-		if len(domet) >= 1:
-			# We can use the dome opening/closing to do an initial cut of the data
-			dometimes_pos = 0
-			for i in range(0,len(timestream)):
-				while(domet[dometimes_pos] < timestream[i] and dometimes_pos < len(domet)-1):
-					dometimes_pos += 1
-				flag[i] = int(domef[dometimes_pos-1])
 
-		# Fetch the temperature data
-		temperaturet, temperaturevals = fetch_tempdata(self.tempdir, min(timestream), max(timestream))
-		if len(temperaturet) >= 1:
-			# We can use the dome opening/closing to do an initial cut of the data
-			temptimes_pos = 0
-			for i in range(0,len(timestream)):
-				while(temperaturet[temptimes_pos] < timestream[i] and temptimes_pos < len(temperaturet)-1):
-					temptimes_pos += 1
-				if temperaturevals[temptimes_pos][1] > 0.28:
-					flag[i] = 0
-
-		# If the elevation parameter isn't set, read in the encoder values
-		if el == []:
-			eltimes, eldata = fetch_eldata(self.eldir, min(timestream), max(timestream), compressed=self.elcompressed)
-			el = np.zeros(len(timestream))
-			eltimes_pos = 0
-			for i in range(0,len(timestream)):
-				# print(eltimes_pos)
-				# print(eltimes)
-				while(eltimes[eltimes_pos] < timestream[i] and eltimes_pos < len(eltimes)-1):
-					# if eltimes_pos >= len(eltimes):
-					# 	break
-					eltimes_pos += 1
-
-				el[i] = (eldata[eltimes_pos-1])+90.0 # Convert from zenith angle to elevation
 
 		# Either get azimuth data, or make some up...
-		aztimes, azdata = fetch_azdata(self.azdir, min(timestream), max(timestream), compressed=False)
+		aztimes, azdata, azrot, azoffset = fetch_azdata(self.azdir, starttime-200, starttime+len(dataset[:])/datarate+100, compressed=False)
 		# print(azdata)
 		if(len(azdata) < 1):
 			# Make up the az+el information
@@ -590,12 +573,59 @@ class gbreduce:
 			az = np.arange(numsamples)*deg_per_sec/datarate
 			az = az % 360
 		else:
+
+			# This is the new code, but it doesn't work yet
+			# dataset, az = merge_az(dataset[:,0:-2], dataset[:,-2], dataset[:,-1], aztimes, azdata, azrot, azoffset)
+			# timestream = dataset[:][0]
+
+			# This is the old code, still in use for now.
 			az = np.zeros(len(timestream))
 			aztimes_pos = 0
 			for i in range(0,len(timestream)):
 				while(aztimes[aztimes_pos] < timestream[i] and aztimes_pos < len(aztimes)-1):
 					aztimes_pos += 1
 				az[i] = azdata[aztimes_pos-1]
+
+		# # Fetch the dome data
+		# domet, domef = fetch_domedata(self.domedir, min(timestream), max(timestream))
+		flag = np.ones(len(timestream))
+		# if len(domet) >= 1:
+		# 	# We can use the dome opening/closing to do an initial cut of the data
+		# 	dometimes_pos = 0
+		# 	for i in range(0,len(timestream)):
+		# 		while(domet[dometimes_pos] < timestream[i] and dometimes_pos < len(domet)-1):
+		# 			dometimes_pos += 1
+		# 		if dometimes_pos == len(domet):
+		# 			flag[i] = int(domef[dometimes_pos])
+		# 		else:
+		# 			flag[i] = int(domef[dometimes_pos-1])
+
+		# Fetch the temperature data
+		temperaturet, temperaturevals = fetch_tempdata(self.tempdir, min(timestream), max(timestream))
+		if len(temperaturet) >= 1:
+			# We can use the dome opening/closing to do an initial cut of the data
+			temptimes_pos = 0
+			for i in range(0,len(timestream)):
+				while(temperaturet[temptimes_pos] < timestream[i] and temptimes_pos < len(temperaturet)-1):
+					temptimes_pos += 1
+				# if temperaturevals[temptimes_pos][1] > 0.28:
+				if temperaturevals[temptimes_pos][1] > 0.4:
+					flag[i] = 2
+
+		# If the elevation parameter isn't set, read in the encoder values
+		if el == []:
+			eltimes, eldata = fetch_eldata(self.eldir, min(timestream)-200, max(timestream)+100, compressed=self.elcompressed)
+			el = np.zeros(len(timestream))
+			eltimes_pos = 0
+			for i in range(0,len(timestream)):
+				# print(eltimes_pos)
+				# print(eltimes)
+				while(eltimes[eltimes_pos] < timestream[i] and eltimes_pos < len(eltimes)-1):
+					# if eltimes_pos >= len(eltimes):
+					# 	break
+					eltimes_pos += 1
+
+				el[i] = (eldata[eltimes_pos-1])+90.0 # Convert from zenith angle to elevation
 
 		t = Time(timestream, format='unix', scale='utc')
 
@@ -606,6 +636,7 @@ class gbreduce:
 		plot_tod(el,self.outdir+prefix+plotext+'/plot_el.png')
 		plot_tod(skypos.ra,self.outdir+prefix+plotext+'/plot_ra.png')
 		plot_tod(skypos.dec,self.outdir+prefix+plotext+'/plot_dec.png')
+		plot_tod(flag,self.outdir+prefix+plotext+'/plot_flag.png')
 		# plot_tod(pa,self.outdir+prefix+plotext+'/plot_pa.png')
 
 
@@ -617,7 +648,11 @@ class gbreduce:
 				newamp = gao_rewind(freqs[pix],newamp, swp_params[pix]['arga'], swp_params[pix]['absa'], swp_params[pix]['tau'], swp_params[pix]['fr'], swp_params[pix]['Qr'], swp_params[pix]['Qc'], swp_params[pix]['phi0'])
 
 				dataset[:,pix*4+3] = abs(newamp)
-				dataset[:,pix*4+4] = angle(newamp)
+				# Need to correct the phase of the angle to avoid negatives
+				angletmp = -1.0*angle(newamp)
+				angletmp = angletmp - np.sign(angletmp)*np.pi
+				# And apply the correction for linearity
+				dataset[:,pix*4+4] = 2.0*np.tan(angletmp/2.0)
 
 				# rewound = gao_rewind(freqs[pix],dataset[:,pix*4+1]+1j*dataset[:,pix*4+2], swp_params[pix]['arga'], swp_params[pix]['absa'], swp_params[pix]['tau'], swp_params[pix]['fr'], swp_params[pix]['Qr'], swp_params[pix]['Qc'], swp_params[pix]['phi0'])
 				# # rewound_offpeak = gao_rewind(dataset[:,pix*4]+3, dataset[:,pix*4]+4, swp_params[pix]['arga'], swp_params[pix]['absa'], swp_params[pix]['tau'], swp_params[pix]['fr'], swp_params[pix]['Qr'], swp_params[pix]['Qc'], swp_params[pix]['phi0'])
@@ -626,13 +661,14 @@ class gbreduce:
 				# # dataset[:,pix*4+2] = abs(rewound_offpeak)
 				# # dataset[:,pix*4+3] = angle(rewound_offpeak)
 
-		sos = signal.butter(10, 1.0, 'hp', fs=1000, output='sos')
+		# sos = signal.butter(10, 0.333, 'hp', fs=1000, output='sos')
 
 		for pix in range(0,numpix*4):
 			plot_tod(dataset[:,pix+1],self.outdir+prefix+plotext+'/plot_'+str(pix+1)+'.png')
 
 			# High-pass filter the data
-			dataset[:,pix+1] = signal.sosfilt(sos, dataset[:,pix+1])
+			# dataset[:,pix+1] = signal.sosfilt(sos, dataset[:,pix+1])
+			dataset[:,pix+1] = subtractbaseline(dataset[:,pix+1],option=0,navg=100)
 
 			# # Correct for any offset
 			# offset = np.median(dataset[:,pix+1])
