@@ -79,6 +79,9 @@ class gbreduce:
 		# print('Applying pointing model')
 		# az,el = self.pointing_model(az[0],el[0])
 
+		# Check to see if the elevation is under 90°, and set it to 90° if not
+		el[el>90.0]=90.0
+
 		position = AltAz(az=az*u.deg,alt=el*u.deg,location=self.telescope,obstime=timearr)
 		if self.coordsys == 0:
 			skypos = position.transform_to(Galactic)
@@ -183,6 +186,43 @@ class gbreduce:
 		plt.savefig(outputname+'_hitmap_128_median.png')
 		plt.clf()
 
+		return
+
+
+	def runset(self, subdir='',ext='',skipfirst=0):
+		folderlist = os.listdir(self.datadir+subdir)
+		todolist = []
+		for folder in folderlist:
+			if '.' not in folder:
+				subfolderlist = os.listdir(self.datadir+subdir+folder)
+				search = 'KSPS'
+				subfolderlist = [f for f in subfolderlist if search not in f]
+				if len(subfolderlist) > 2:
+					todolist.append(subdir+folder)
+		print(todolist)
+
+		trip = 0
+		for item in todolist:
+			if trip <= skipfirst:
+				trip += 1
+				continue
+			folder = item+'/'
+			starttime = datetime(int(folder[8:12]),int(folder[12:14]),int(folder[14:16]),int(folder[22:24]),int(folder[24:26]),int(folder[26:28]),tzinfo=pytz.timezone('UTC')).timestamp()
+			name=folder[8:-1].replace('/','_')+ext
+			
+			date = datetime.utcfromtimestamp(starttime)
+			contents = os.listdir(self.datadir+folder)
+			todo = []
+			for line in contents:
+				if 'kids' in line and 'list' in line:
+					todo.append(line.replace('kids','').replace('list',''))
+			for line in todo:
+				swpfile = 'swp'+line+'rawdata'
+				todfile = 'tod'+line+'rawdata'
+				kidparams = 'kids'+line+'list'
+				swp_params = self.analyse_swp(name+line.replace('.',''),self.datadir+folder+swpfile,kidparams=self.datadir+folder+kidparams)
+				print(swp_params)
+				tod_analysis = self.analyse_tod(name+line.replace('.',''),self.datadir+folder+todfile,kidparams=self.datadir+folder+kidparams,swp_params=swp_params,starttime=starttime)
 		return
 
 
@@ -482,6 +522,7 @@ class gbreduce:
 			print('Frequencies:')
 			print(kids['kids_freqs'])
 			print(kids['blinds_freqs'])
+			numpix = len(kids['kids_freqs'])
 
 		print(datarate)
 		print(centerfreqs)

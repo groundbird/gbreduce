@@ -377,19 +377,23 @@ def fetch_eldata(indir, starttime, endtime, compressed=False):
 			print(date[0:4]+' ' + date[5:7] + ' ' + date[8:10] +" " + time[0:2] + ' ' + time[2:4] + ' ' + time[4:6])
 			timestamp = datetime.datetime(int(date[0:4]),int(date[5:7]),int(date[8:10]),int(time[0:2]),int(time[2:4]),int(time[4:6]),tzinfo=pytz.timezone('UTC')).timestamp()
 			starttimes.append(timestamp)
-			print(timestamp)
-			print(starttime)
-			print(endtime)
+			# print(timestamp)
+			# print(starttime)
+			# print(endtime)
 			if timestamp > starttime and timestamp < endtime:
-				print('yes')
+				# print('yes')
 				use_files[-1] = 1
 				use_files.append(1)
+			elif timestamp > starttime and np.sum(use_files) == 0:
+				# Catch the case where the observation is entirely within 1 file
+				use_files[-1] = 1
 			else:
 				use_files.append(0)
 		use_files = np.asarray(use_files).astype(int)
 		starttimes = np.asarray(starttimes)
 		filelist = np.asarray(filelist)
 
+		print('\n')
 		for file in filelist[use_files > 0]:
 			print(file)
 			# try:
