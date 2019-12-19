@@ -43,8 +43,8 @@ run = gbreduce.gbreduce(outdir=outdir,\
 	tempdir=tempdir,\
 	nside = 512, use_mkidpylibs=True)
 
-subdir = 'kiddata/20191218/'
-ext = '_swp'
-skipfirst = 1 # Note: this excludes folders containing files with 'KSPS' in the filenames
+subdir = 'kiddata/20191216/'
+ext = '_swp_newaz'
+skipfirst = 0 # Note: this already excludes folders containing files with 'KSPS' in the filenames
 run.runset(subdir=subdir,ext=ext,skipfirst=skipfirst)
 

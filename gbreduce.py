@@ -206,7 +206,7 @@ class gbreduce:
 		else:
 			trip = 0
 		for item in todolist:
-			if trip <= skipfirst:
+			if trip < skipfirst:
 				trip += 1
 				continue
 			folder = item+'/'
@@ -619,16 +619,16 @@ class gbreduce:
 		else:
 
 			# This is the new code, but it doesn't work yet
-			# dataset, az = merge_az(dataset[:,0:-2], dataset[:,-2], dataset[:,-1], aztimes, azdata, azrot, azoffset)
-			# timestream = dataset[:][0]
+			dataset, az = merge_az(dataset[:,0:-2], dataset[:,-2], dataset[:,-1], aztimes, azdata, azrot, azoffset)
+			timestream = dataset[:,0]
 
 			# This is the old code, still in use for now.
-			az = np.zeros(len(timestream))
-			aztimes_pos = 0
-			for i in range(0,len(timestream)):
-				while(aztimes[aztimes_pos] < timestream[i] and aztimes_pos < len(aztimes)-1):
-					aztimes_pos += 1
-				az[i] = azdata[aztimes_pos-1]
+			# az = np.zeros(len(timestream))
+			# aztimes_pos = 0
+			# for i in range(0,len(timestream)):
+			# 	while(aztimes[aztimes_pos] < timestream[i] and aztimes_pos < len(aztimes)-1):
+			# 		aztimes_pos += 1
+			# 	az[i] = azdata[aztimes_pos-1]
 
 		# # Fetch the dome data
 		# domet, domef = fetch_domedata(self.domedir, min(timestream), max(timestream))
@@ -677,7 +677,9 @@ class gbreduce:
 		healpix_pixel, centralpos = self.calc_healpix_pixels(skypos)
 
 		plot_tod(az,self.outdir+prefix+plotext+'/plot_az.png')
-		plot_tod(np.diff(az),self.outdir+prefix+plotext+'/plot_az_diff.png')
+		azdiff = np.diff(az)
+		azdiff[azdiff < -300] += 360.0
+		plot_tod(azdiff,self.outdir+prefix+plotext+'/plot_az_diff.png')
 		plot_tod(el,self.outdir+prefix+plotext+'/plot_el.png')
 		plot_tod(skypos.ra,self.outdir+prefix+plotext+'/plot_ra.png')
 		plot_tod(skypos.dec,self.outdir+prefix+plotext+'/plot_dec.png')
@@ -762,8 +764,14 @@ class gbreduce:
 			plt.savefig(self.outdir+prefix+'/skymap_'+str(pix+1)+'view.png')
 			plt.clf()
 
-			hp.gnomview(skymap,rot=[323.43,20.73],reso=1.5,title='Channel ' + str(pix+1))
-			plt.savefig(self.outdir+prefix+'/skymap_'+str(pix+1)+'zoom.png')
+			skymap[skymap != hp.pixelfunc.UNSEEN] -= np.median(skymap[skymap != hp.pixelfunc.UNSEEN])
+			std = np.std(skymap[skymap != hp.pixelfunc.UNSEEN])
+			hp.mollview(skymap,max=3.0*std,min=-3.0*std)
+			plt.savefig(self.outdir+prefix+'/skymap_'+str(pix+1)+'_skymap_std.png')
+			plt.clf()
+	
+			hp.gnomview(skymap,rot=centralpos,reso=20,title='Channel ' + str(pix+1),max=3.0*std,min=-3.0*std)
+			plt.savefig(self.outdir+prefix+'/skymap_'+str(pix+1)+'view_std.png')
 			plt.clf()
 
 		# # Write out the TOD to disk

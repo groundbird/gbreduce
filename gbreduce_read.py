@@ -45,7 +45,9 @@ def get_az_data(filename):
 	# times_new = []
 	# for i in range(len(times)):
 	# 	times_new.append((float(times[i]) - starttime)*0.001 + unixtime)
-
+	# print(filename)
+	# print(times[0])
+	# print(times[-1])
 	return list(times_new), vals, nr, roff
 
 
@@ -88,11 +90,24 @@ def compress_and_plot_azdata(indir,out_prefix,reload=False,savedata=True):
 
 def fetch_azdata(indir, starttime, endtime, compressed=False):
 	# We should have unix time as an input, so convert that to Year/Month/day
-	# We'll assume that we'll only ever need 2 days of data at most.
+	# We'll assume that we'll only ever need 3 days of data at most.
 	if compressed:
 		ext = '.txt.gz'
 	else:
-		ext = '.dat'
+		ext = '.dat.xz'
+
+	prevdir = datetime.datetime.utcfromtimestamp(int(starttime)-24*60*60).strftime('%Y/%m/%d')
+	# print(indir)
+	# print(prevdir)
+	try:
+		inputlist = os.listdir(indir + prevdir)
+		filelist = [prevdir+'/'+f for f in inputlist if ext in f]
+
+	except:
+		print('No azimuth data found for the previous day!')
+		# return []
+
+
 	startdir = datetime.datetime.utcfromtimestamp(int(starttime)-1).strftime('%Y/%m/%d')
 	# print(indir)
 	# print(startdir)
@@ -101,10 +116,10 @@ def fetch_azdata(indir, starttime, endtime, compressed=False):
 		filelist = [startdir+'/'+f for f in inputlist if ext in f]
 
 	except:
-		print('No azimuth data found!')
-		return []
+		print('No azimuth data found for the day!')
+		# return []
 
-	enddir = datetime.datetime.utcfromtimestamp(int(endtime)+1).strftime('%Y/%m/%d')
+	enddir = datetime.datetime.utcfromtimestamp(int(starttime)+24*60*60).strftime('%Y/%m/%d')
 	# print(startdir)
 	# print(enddir)
 	if enddir != startdir:
@@ -142,7 +157,8 @@ def fetch_azdata(indir, starttime, endtime, compressed=False):
 			# print(timestamp)
 			# print(endtime)
 			if timestamp > starttime and timestamp < endtime:
-				use_files[-1] = 1
+				if len(use_files) != 0:
+					use_files[-1] = 1
 				use_files.append(1)
 			else:
 				use_files.append(0)
@@ -156,7 +172,7 @@ def fetch_azdata(indir, starttime, endtime, compressed=False):
 		# print(starttimes[use_files>0])
 
 		for file in filelist[use_files > 0]:
-			# print(file)
+			print(file)
 			times, azimuths, nrot, roff = get_az_data(indir+file)
 			timeset = list(timeset) + list(times)
 			az = list(az) + list(azimuths)
@@ -169,16 +185,17 @@ def fetch_azdata(indir, starttime, endtime, compressed=False):
 def find_az_synctime(indir, starttime, synctime):
 	# We should have unix time as an input, so convert that to Year/Month/day
 	# We'll assume that we'll only ever need 3 days of data at most.
-	ext = '.dat'
+	ext = '.dat.xz'
 	filelist=[]
 	prevdir = datetime.datetime.utcfromtimestamp(int(starttime)-24*60*60).strftime('%Y/%m/%d')
+	print(prevdir)
 	try:
 		inputlist = os.listdir(indir + prevdir)
-		filelist = filelist+[startdir+'/'+f for f in inputlist if ext in f]
+		filelist = filelist+[prevdir+'/'+f for f in inputlist if ext in f]
 
 	except:
 		print('No azimuth data found for previous day!')
-		return []
+		# return []
 
 	startdir = datetime.datetime.utcfromtimestamp(int(starttime)-1).strftime('%Y/%m/%d')
 	try:
@@ -211,7 +228,8 @@ def find_az_synctime(indir, starttime, synctime):
 		# print(timestamp)
 		# print(endtime)
 		if timestamp > starttime:
-			use_files[-1] = 1
+			if len(use_files) != 0:
+				use_files[-1] = 1
 			use_files.append(1)
 		else:
 			use_files.append(0)
@@ -340,34 +358,34 @@ def fetch_eldata(indir, starttime, endtime, compressed=False):
 	if compressed:
 		ext = '.txt.gz'
 	else:
-		ext = '.dat'
+		ext = '.dat.xz'
 	filelist = []
 	prevdir = datetime.datetime.utcfromtimestamp(int(starttime)-24*60*60).strftime('%Y/%m/%d')
-	print(indir)
-	print(prevdir)
+	# print(indir)
+	# print(prevdir)
 	try:
 		inputlist = os.listdir(indir + prevdir)
-		filelist = filelist+[startdir+'/'+f for f in inputlist if ext in f]
+		filelist = filelist+[prevdir+'/'+f for f in inputlist if ext in f]
 
 	except:
 		print('No elevation data found for the previous day!')
-		return []
+		# return []
 
 
 	startdir = datetime.datetime.utcfromtimestamp(int(starttime)-1).strftime('%Y/%m/%d')
-	print(indir)
-	print(startdir)
+	# print(indir)
+	# print(startdir)
 	try:
 		inputlist = os.listdir(indir + startdir)
 		filelist = filelist+[startdir+'/'+f for f in inputlist if ext in f]
 
 	except:
 		print('No elevation data found for the day!')
-		return []
+		# return []
 
 	enddir = datetime.datetime.utcfromtimestamp(int(starttime)+24*60*60).strftime('%Y/%m/%d')
-	print(startdir)
-	print(enddir)
+	# print(startdir)
+	# print(enddir)
 	if enddir != startdir:
 		# print('Hi')
 		# Also need to append these
@@ -394,22 +412,23 @@ def fetch_eldata(indir, starttime, endtime, compressed=False):
 		starttimes = []
 		use_files = []
 		for file in filelist:
-			print(file)
+			# print(file)
 			time = file[-18:-12]
 			date = file[0:10]
-			print(date[0:4]+' ' + date[5:7] + ' ' + date[8:10] +" " + time[0:2] + ' ' + time[2:4] + ' ' + time[4:6])
+			# print(date[0:4]+' ' + date[5:7] + ' ' + date[8:10] +" " + time[0:2] + ' ' + time[2:4] + ' ' + time[4:6])
 			timestamp = datetime.datetime(int(date[0:4]),int(date[5:7]),int(date[8:10]),int(time[0:2]),int(time[2:4]),int(time[4:6]),tzinfo=pytz.timezone('UTC')).timestamp()
 			starttimes.append(timestamp)
 			# print(timestamp)
 			# print(starttime)
 			# print(endtime)
 			if timestamp > starttime and timestamp < endtime:
-				# print('yes')
-				use_files[-1] = 1
+				if len(use_files) != 0:
+					use_files[-1] = 1
 				use_files.append(1)
 			elif timestamp > starttime and np.sum(use_files) == 0:
 				# Catch the case where the observation is entirely within 1 file
-				use_files[-1] = 1
+				if len(use_files) != 0:
+					use_files[-1] = 1
 				use_files.append(0)
 			else:
 				use_files.append(0)

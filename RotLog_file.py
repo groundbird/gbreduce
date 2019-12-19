@@ -41,6 +41,9 @@ def read_packet(buff):
 def conv_angle(_v):
     return (-(float(360.0 * _v / 8192.))-55.0) % 360.0
 
+# def conv_angle(_v):
+#     return float(360.0 * _v / 8192.)
+
 class RotLog_file():
     """read file"""
     def __init__(self, _path, n_rotate=-1, sync_off=0):
