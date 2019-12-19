@@ -201,7 +201,10 @@ class gbreduce:
 					todolist.append(subdir+folder)
 		print(todolist)
 
-		trip = 0
+		if skipfirst == 0:
+			trip = 1
+		else:
+			trip = 0
 		for item in todolist:
 			if trip <= skipfirst:
 				trip += 1
@@ -674,6 +677,7 @@ class gbreduce:
 		healpix_pixel, centralpos = self.calc_healpix_pixels(skypos)
 
 		plot_tod(az,self.outdir+prefix+plotext+'/plot_az.png')
+		plot_tod(np.diff(az),self.outdir+prefix+plotext+'/plot_az_diff.png')
 		plot_tod(el,self.outdir+prefix+plotext+'/plot_el.png')
 		plot_tod(skypos.ra,self.outdir+prefix+plotext+'/plot_ra.png')
 		plot_tod(skypos.dec,self.outdir+prefix+plotext+'/plot_dec.png')
