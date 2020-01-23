@@ -13,7 +13,7 @@ import matplotlib.pyplot as plt
 import astropy.io.fits as fits
 from astropy.table import Table
 import astropy.units as u
-from astropy.coordinates import SkyCoord, EarthLocation, AltAz, Galactic, ICRS, FK5
+from astropy.coordinates import SkyCoord, EarthLocation, AltAz, Galactic, ICRS, FK5, get_moon, get_sun
 from astropy.time import Time
 from astropy.coordinates import Angle
 import astropy_speedups
@@ -33,7 +33,7 @@ from matplotlib.gridspec import GridSpec
 from merge_az import merge_az
 
 class gbreduce:
-	def __init__(self,datadir="/net/nas/proyectos/quijote2/tod/",outdir='',azdir='',eldir='',elcompressed=False,domedir='',tempdir='',nside=512,datarate=1000,use_mkidpylibs=True):
+	def __init__(self,datadir="/net/nas/proyectos/quijote2/tod/",outdir='',azdir='',eldir='',pixinfo='',elcompressed=False,domedir='',tempdir='',nside=512,datarate=1000,use_mkidpylibs=True):
 		# Directories
 		self.datadir = datadir
 		self.outdir = outdir
@@ -41,11 +41,12 @@ class gbreduce:
 		self.eldir = eldir
 		self.domedir = domedir
 		self.tempdir = tempdir
+		self.pixinfo = pixinfo
 
 		# Basic telescope information
 		self.telescope = EarthLocation(lat=28.300467*u.deg, lon=-16.510288*u.deg, height=2390*u.m)
 		self.datarate = datarate
-
+		self.focallength = 600.0 # mm
 		# Analysis options
 		self.use_mkidpylibs = use_mkidpylibs
 		self.elcompressed = elcompressed
@@ -196,6 +197,15 @@ class gbreduce:
 			if '.' not in folder:
 				subfolderlist = os.listdir(self.datadir+subdir+folder)
 				search = 'KSPS'
+				test = [f for f in subfolderlist if search in f]
+				print(test)
+				if test != []:
+					print('No data')
+					continue
+				test = [f for f in subfolderlist if 'tod' in f]
+				if test == []:
+					print('No data')
+					continue
 				subfolderlist = [f for f in subfolderlist if search not in f]
 				if len(subfolderlist) > 2:
 					todolist.append(subdir+folder)
@@ -493,6 +503,8 @@ class gbreduce:
 
 	def analyse_tod(self, prefix, filename, el=[],rpm=2,datarate=1000.0,starttime=0.0,numpix=4, plotlimit=0.0, quiet=False, dofft=False, plottods=True, plotmap=True, dopol=False, plotcombination=True, numfiles=50,swp_params=[],centerfreqs=[],lo=4.99e9,kidparams=[]):
 
+		logfile = open(self.outdir+prefix+"/_log.txt","w")
+		logfile.write(str(swp_params))
 		# Sort out the output directories
 		if prefix[-1] != '/':
 			prefix = prefix + "/"
@@ -606,19 +618,21 @@ class gbreduce:
 		aztimes, azdata, azrot, azoffset = fetch_azdata(self.azdir, starttime-200, starttime+len(dataset[:])/datarate+100, compressed=False)
 		# print(azdata)
 		if(len(azdata) < 1):
-			# Make up the az+el information
-			deg_per_sec = rpm*360.0/60.0
-			numrotations = rpm*numsamples/(60.0*datarate)
-			print(numsamples/(60.0*datarate))
-			print(numrotations)
-			print(rpm)
-			print(deg_per_sec)
-			print(deg_per_sec*60.0)
-			az = np.arange(numsamples)*deg_per_sec/datarate
-			az = az % 360
+			print('No azimuth data!')
+			exit()
+			# # Make up the az+el information
+			# deg_per_sec = rpm*360.0/60.0
+			# numrotations = rpm*numsamples/(60.0*datarate)
+			# print(numsamples/(60.0*datarate))
+			# print(numrotations)
+			# print(rpm)
+			# print(deg_per_sec)
+			# print(deg_per_sec*60.0)
+			# az = np.arange(numsamples)*deg_per_sec/datarate
+			# az = az % 360
 		else:
 
-			# This is the new code, but it doesn't work yet
+			# This is the new code
 			dataset, az = merge_az(dataset[:,0:-2], dataset[:,-2], dataset[:,-1], aztimes, azdata, azrot, azoffset)
 			timestream = dataset[:,0]
 
@@ -661,31 +675,26 @@ class gbreduce:
 			eltimes, eldata = fetch_eldata(self.eldir, min(timestream)-200, max(timestream)+100, compressed=self.elcompressed)
 			el = np.zeros(len(timestream))
 			eltimes_pos = 0
+			print(len(eltimes))
 			for i in range(0,len(timestream)):
 				# print(eltimes_pos)
 				# print(eltimes)
 				while(eltimes[eltimes_pos] < timestream[i] and eltimes_pos < len(eltimes)-1):
-					# if eltimes_pos >= len(eltimes):
-					# 	break
+					if eltimes_pos >= len(eltimes):
+						break
 					eltimes_pos += 1
 
 				el[i] = (eldata[eltimes_pos-1])+90.0 # Convert from zenith angle to elevation
 
 		t = Time(timestream, format='unix', scale='utc')
 
-		skypos = self.calc_positions(az, el, t.jd)
-		healpix_pixel, centralpos = self.calc_healpix_pixels(skypos)
-
+		# Plot the azimuth, elevation, and flags
 		plot_tod(az,self.outdir+prefix+plotext+'/plot_az.png')
 		azdiff = np.diff(az)
 		azdiff[azdiff < -300] += 360.0
 		plot_tod(azdiff,self.outdir+prefix+plotext+'/plot_az_diff.png')
 		plot_tod(el,self.outdir+prefix+plotext+'/plot_el.png')
-		plot_tod(skypos.ra,self.outdir+prefix+plotext+'/plot_ra.png')
-		plot_tod(skypos.dec,self.outdir+prefix+plotext+'/plot_dec.png')
 		plot_tod(flag,self.outdir+prefix+plotext+'/plot_flag.png')
-		# plot_tod(pa,self.outdir+prefix+plotext+'/plot_pa.png')
-
 
 		if swp_params != []:
 			for pix in range(0,numpix):
@@ -710,12 +719,43 @@ class gbreduce:
 
 		# sos = signal.butter(10, 0.333, 'hp', fs=1000, output='sos')
 
+		# Calculating moon positions
+		print('Moon calculations...')
+		print(len(t))
+
+		numinterp = 1000
+		moonpos_azel = get_moon_azel(location, times, numinterp)
+		# moonpos = get_moon(t,self.telescope)
+		# moonpos_azel = moonpos.transform_to(AltAz(location=self.telescope,obstime=t))
+		print('Moon calculations done.')
 		for pix in range(0,numpix*4):
+			print(pix)
+			logfile.write('\n\nPixel '+str(pix)+'\n')
+			start = 100
+			end = -100
+
+			# This will need to be calculated for each pixel, but for now just calculate it the first time.
+			# if pix%4 == 0:
+			if pix == 0:
+				# Calculate the positions for this pixel
+				skypos = self.calc_positions(az, el, t.jd)
+				healpix_pixel, centralpos = self.calc_healpix_pixels(skypos)
+				plot_tod(skypos.ra,self.outdir+prefix+plotext+'/plot_ra.png')
+				plot_tod(skypos.dec,self.outdir+prefix+plotext+'/plot_dec.png')
+				# plot_tod(pa,self.outdir+prefix+plotext+'/plot_pa.png')
+
+
 			plot_tod(dataset[:,pix+1],self.outdir+prefix+plotext+'/plot_'+str(pix+1)+'.png')
+
+			plot_ground(az[start:end],dataset[start:end,pix+1],self.outdir+prefix+plotext+'/plot_'+str(pix+1)+'_az_binned.png')
+
 
 			# High-pass filter the data
 			# dataset[:,pix+1] = signal.sosfilt(sos, dataset[:,pix+1])
-			dataset[:,pix+1] = subtractbaseline(dataset[:,pix+1],option=0,navg=100)
+			num_to_average = 100
+			if 'GB02' in prefix:
+				num_to_average = 500
+			dataset[:,pix+1] = subtractbaseline(dataset[:,pix+1],option=0,navg=num_to_average)
 
 			# # Correct for any offset
 			# offset = np.median(dataset[:,pix+1])
@@ -737,6 +777,27 @@ class gbreduce:
 			# dataset[:,pix+1] /= scale
 
 			plot_tod(dataset[:,pix+1],self.outdir+prefix+plotext+'/plot_'+str(pix+1)+'_rescale.png')
+			plot_val_tod(az[start:end],dataset[start:end,pix+1],self.outdir+prefix+plotext+'/plot_'+str(pix+1)+'_az.png')
+
+			try:
+				maxpix = np.argmax(np.abs(dataset[start:end,pix+1]))
+			except:
+				logfile.write('Something odd happened with getting argmax of the dataset!')
+				return 0
+			logfile.write('At array index ' + str(maxpix)+'\n')
+			logfile.write('Maximum value is ' + str(dataset[maxpix,pix+1])+'\n')
+			logfile.write('At azimuth ' + str(az[maxpix])+'\n')
+			logfile.write('At elevation ' + str(el[maxpix])+'\n')
+			moonpos = get_moon(t[maxpix],self.telescope)
+			logfile.write(str(moonpos)+'\n')
+			moonpos2 = moonpos_azel[maxpix]
+			logfile.write(str(moonpos2)+'\n')
+			logfile.write(str(moonpos2.az.deg)+'\n')
+			logfile.write(str(moonpos2.alt.deg)+'\n')
+			az_correction = az[maxpix]-moonpos2.az.deg
+			el_correction = el[maxpix]-moonpos2.alt.deg
+			logfile.write('Difference is ' + str(az_correction) + ' in azimuth and ' + str(el_correction) + ' in elevation.')
+			# exit()
 
 			skymap = np.zeros(self.npix, dtype=np.float)
 			hitmap = np.zeros(self.npix, dtype=np.float)
@@ -774,6 +835,34 @@ class gbreduce:
 			plt.savefig(self.outdir+prefix+'/skymap_'+str(pix+1)+'view_std.png')
 			plt.clf()
 
+			domoon = True
+			if domoon == True:
+				# Calculate the positions for this pixel, including the offset calculated from the moon
+				# skypos2 = self.calc_positions(az+az_correction, el+el_correction, t.jd)
+				azdist = az+az_correction - moonpos_azel.az.deg
+				eldist = el+el_correction - moonpos_azel.alt.deg
+				healpix_pixel2 = hp.ang2pix(self.nside, (np.pi/2)-azdist*np.pi/180.0, eldist*np.pi/180.0)
+				skymap = np.zeros(self.npix, dtype=np.float)
+				hitmap = np.zeros(self.npix, dtype=np.float)
+				for i in range(0,len(healpix_pixel)):
+					if flag[i] == 1:
+						skymap[healpix_pixel2[i]] = skymap[healpix_pixel2[i]] + dataset[i,pix+1]
+						hitmap[healpix_pixel2[i]] = hitmap[healpix_pixel2[i]] + 1
+				for i in range(0,len(skymap)):
+					if hitmap[i] >= 1:
+						skymap[i] = skymap[i]/hitmap[i]
+					else:
+						skymap[i] = hp.pixelfunc.UNSEEN
+
+				self.write_healpix_map(skymap,prefix,self.outdir+prefix+'/skymap_moon_'+str(pix+1)+'.fits')
+				self.write_healpix_map(hitmap,prefix,self.outdir+prefix+'/hitmap_moon_'+str(pix+1)+'.fits')
+
+
+		for i in range(0,len(healpix_pixel)):
+			skymap[healpix_pixel[i]] = az[i]
+		self.write_healpix_map(skymap,prefix,self.outdir+prefix+'/skymap_az.fits')
+		logfile.close()
+		# exit()
 		# # Write out the TOD to disk
 		# ra_col = fits.Column(name='ra',format='E',array=np.array(Angle(skypos.ra).degree))
 		# dec_col = fits.Column(name='dec',format='E',array=np.array(Angle(skypos.dec).degree))

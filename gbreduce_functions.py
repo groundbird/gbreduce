@@ -9,6 +9,7 @@
 
 import numpy as np
 import healpy as hp
+import astropy as ap
 import matplotlib.pyplot as plt
 import astropy.io.fits as fits
 import scipy.fftpack
@@ -272,3 +273,41 @@ def subtractbaseline(data, option=0, navg=1500):
 			data[(npoints//navg)*navg-1:] = data[(npoints//navg)*navg-1:] - (A*xline+B)
 
 	return data
+
+def plot_ground(az, data, outfile,nazpoints=360):
+	# Define a histogram of the azimuth range
+	azbins = np.arange(0,360.0,nazpoints/360)
+	azvals = np.zeros(nazpoints)
+	azhits = np.zeros(nazpoints)
+	numdata = len(data)
+	if len(az) < numdata:
+		numdata = len(az)
+	# Run through the data to populate it
+	# Need to handle cases where az=360 better!
+	for i in range(0,numdata):
+		try:
+			azvals[int(np.round(az[i])*360/nazpoints)] += data[i]
+			azhits[int(np.round(az[i])*360/nazpoints)] += 1
+		except:
+			null = 0
+
+	# Average it
+	azvals /= azhits
+
+	# Plot it
+	plt.plot(azbins,azvals)
+	plt.xlim(0,360.0)
+	plt.xlabel('Azimuth')
+	plt.ylabel('Amplitude')
+	plt.savefig(outfile)
+	plt.clf()
+	np.savetxt(outfile+'.txt',[azbins, azvals])
+	return
+
+def get_moon_azel(location, times, numinterp=1000):
+	moonpos = ap.coordinates.get_moon(times[0::numinterp],location)
+	moonpos_azel = moonpos.transform_to(AltAz(location=location,obstime=times[0::numinterp]))
+	az = np.interp(times.mjd, times[0::numinterp].mjd, moonpos_azel.az)
+	el = np.interp(times.mjd, times[0::numinterp].mjd, moonpos_azel.alt)
+	return [az, el]
+

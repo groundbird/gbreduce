@@ -150,12 +150,12 @@ def fetch_azdata(indir, starttime, endtime, compressed=False):
 		for file in filelist:
 			time = file[-18:-12]
 			date = file[0:10]
-			# print(date[0:4]+' ' + date[5:7] + ' ' + date[8:10] +" " + time[0:2] + ' ' + time[2:4] + ' ' + time[4:6])
+			print(date[0:4]+' ' + date[5:7] + ' ' + date[8:10] +" " + time[0:2] + ' ' + time[2:4] + ' ' + time[4:6])
 			timestamp = datetime.datetime(int(date[0:4]),int(date[5:7]),int(date[8:10]),int(time[0:2]),int(time[2:4]),int(time[4:6]),tzinfo=pytz.timezone('UTC')).timestamp()
 			starttimes.append(timestamp)
-			# print(starttime)
-			# print(timestamp)
-			# print(endtime)
+			print(starttime)
+			print(timestamp)
+			print(endtime)
 			if timestamp > starttime and timestamp < endtime:
 				if len(use_files) != 0:
 					use_files[-1] = 1
@@ -164,7 +164,8 @@ def fetch_azdata(indir, starttime, endtime, compressed=False):
 				use_files.append(0)
 			if timestamp > endtime and np.sum(use_files) == 0:
 				# We have the case that the entire dataset is in one file, just use that one.
-				use_files[-2] = 1
+				if len(use_files) > 1:
+					use_files[-2] = 1
 
 		use_files = np.asarray(use_files).astype(int)
 		starttimes = np.asarray(starttimes)
@@ -285,15 +286,16 @@ def get_el_data_condensed(filename):
 	numbytes, version, unixtime, headertxt = tmped.get_header()
 	times = []
 	vals = []
-	lastval = 0
+	lastval = np.nan # Set to an invalid value to start with
 	starttime = 0
 	times_sync = []
 	vals_sync = []
-	# length = tmped.get_length()
+	length = tmped.get_length()
 	# print(length)
 	for i in range(0,tmped.get_length()):
 		try:
 			data = tmped.get_data(i)
+			# print(data)
 			if data[2].name == 'DATA':
 				if starttime == 0:
 					starttime = data[0]
@@ -307,7 +309,8 @@ def get_el_data_condensed(filename):
 		except:
 			# If we find a problem, move onto the next one
 			continue
-
+	# print(len(times))
+	# print(len(vals))
 	return times, vals, times_sync, vals_sync
 
 def compress_and_plot_eldata(indir,out_prefix,reload=False,savedata=True):
