@@ -724,7 +724,8 @@ class gbreduce:
 		print(len(t))
 
 		numinterp = 1000
-		moonpos_azel = get_moon_azel(location, times, numinterp)
+		moonpos_az, moonpos_el = get_moon_azel(self.telescope, t, numinterp)
+		print(len(moonpos_az))
 		# moonpos = get_moon(t,self.telescope)
 		# moonpos_azel = moonpos.transform_to(AltAz(location=self.telescope,obstime=t))
 		print('Moon calculations done.')
@@ -790,12 +791,10 @@ class gbreduce:
 			logfile.write('At elevation ' + str(el[maxpix])+'\n')
 			moonpos = get_moon(t[maxpix],self.telescope)
 			logfile.write(str(moonpos)+'\n')
-			moonpos2 = moonpos_azel[maxpix]
-			logfile.write(str(moonpos2)+'\n')
-			logfile.write(str(moonpos2.az.deg)+'\n')
-			logfile.write(str(moonpos2.alt.deg)+'\n')
-			az_correction = az[maxpix]-moonpos2.az.deg
-			el_correction = el[maxpix]-moonpos2.alt.deg
+			logfile.write(str(moonpos_az[maxpix])+'\n')
+			logfile.write(str(moonpos_el[maxpix])+'\n')
+			az_correction = az[maxpix]-moonpos_az[maxpix]#.az.deg
+			el_correction = el[maxpix]-moonpos_el[maxpix]#.alt.deg
 			logfile.write('Difference is ' + str(az_correction) + ' in azimuth and ' + str(el_correction) + ' in elevation.')
 			# exit()
 
@@ -839,9 +838,9 @@ class gbreduce:
 			if domoon == True:
 				# Calculate the positions for this pixel, including the offset calculated from the moon
 				# skypos2 = self.calc_positions(az+az_correction, el+el_correction, t.jd)
-				azdist = az+az_correction - moonpos_azel.az.deg
-				eldist = el+el_correction - moonpos_azel.alt.deg
-				healpix_pixel2 = hp.ang2pix(self.nside, (np.pi/2)-azdist*np.pi/180.0, eldist*np.pi/180.0)
+				azdist = az+az_correction - moonpos_az#.az.deg
+				eldist = el+el_correction - moonpos_el#.alt.deg
+				healpix_pixel2 = hp.ang2pix(self.nside, (np.pi/2)-eldist*np.pi/180.0, azdist*np.pi/180.0)
 				skymap = np.zeros(self.npix, dtype=np.float)
 				hitmap = np.zeros(self.npix, dtype=np.float)
 				for i in range(0,len(healpix_pixel)):
