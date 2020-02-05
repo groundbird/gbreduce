@@ -50,9 +50,10 @@ run = gbreduce.gbreduce(outdir=outdir,\
 # print(np.median(vals))
 # exit()
 # Run a batch job
-subdir = 'kiddata/20200111/'
-ext = '_swp_newaz42a'
-skipfirst = 6 # Note: this already excludes folders containing files with 'KSPS' in the filenames
+# subdir = 'kiddata/20191218/'
+subdir = 'kiddata/20200204/'
+ext = '_swp_poscor_moontest'
+skipfirst = 9 # Note: this already excludes folders containing files with 'KSPS' in the filenames
 run.runset(subdir=subdir,ext=ext,skipfirst=skipfirst)
 exit()
 

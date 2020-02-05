@@ -33,7 +33,7 @@ from matplotlib.gridspec import GridSpec
 from merge_az import merge_az
 
 class gbreduce:
-	def __init__(self,datadir="/net/nas/proyectos/quijote2/tod/",outdir='',azdir='',eldir='',pixinfo='',elcompressed=False,domedir='',tempdir='',nside=512,datarate=1000,use_mkidpylibs=True):
+	def __init__(self,datadir="/net/nas/proyectos/quijote2/tod/",outdir='',azdir='',eldir='',pixinfo='',elcompressed=False,domedir='',tempdir='',nside=512,datarate=1000,use_mkidpylibs=True,focallength=500.0, boresight=96.0):
 		# Directories
 		self.datadir = datadir
 		self.outdir = outdir
@@ -46,7 +46,9 @@ class gbreduce:
 		# Basic telescope information
 		self.telescope = EarthLocation(lat=28.300467*u.deg, lon=-16.510288*u.deg, height=2390*u.m)
 		self.datarate = datarate
-		self.focallength = 600.0 # mm
+		self.focallength = focallength
+		self.boresight=boresight
+
 		# Analysis options
 		self.use_mkidpylibs = use_mkidpylibs
 		self.elcompressed = elcompressed
@@ -62,6 +64,11 @@ class gbreduce:
 
 		# Stable version control
 		self.ver = 0.0
+
+		# Preload some information
+		if self.pixinfo != '':
+			self.pixel_az, self.pixel_el, self.pixel_freq = get_pixinfo(self.pixinfo, self.focallength, self.boresight)
+
 
 	def calc_JytoK(self,beam,freq):
 		return 1e-26*((self.c/freq)**2)/(2.0*self.k*calc_beam_area(beam))
@@ -217,8 +224,10 @@ class gbreduce:
 			trip = 0
 		for item in todolist:
 			if trip < skipfirst:
+				print('Skipping ' + item)
 				trip += 1
 				continue
+			print('Running ' + item)
 			folder = item+'/'
 			starttime = datetime(int(folder[8:12]),int(folder[12:14]),int(folder[14:16]),int(folder[22:24]),int(folder[24:26]),int(folder[26:28]),tzinfo=pytz.timezone('UTC')).timestamp()
 			name=folder[8:-1].replace('/','_')+ext
@@ -585,7 +594,13 @@ class gbreduce:
 		endsync = dataset[-1,-2]
 		print(endsync)
 
-		startsynctime = find_az_synctime(self.azdir, starttime-100, startsync)
+		try:
+			startsynctime = find_az_synctime(self.azdir, starttime-100, startsync)
+		except:
+			logfile.write("Bad azimuth data, can't find start time, skipping")
+			logfile.close()
+			return
+
 		print(startsynctime)
 		print(float(precount/datarate))
 		starttime = startsynctime - float(precount/datarate)
@@ -633,8 +648,13 @@ class gbreduce:
 		else:
 
 			# This is the new code
-			dataset, az = merge_az(dataset[:,0:-2], dataset[:,-2], dataset[:,-1], aztimes, azdata, azrot, azoffset)
-			timestream = dataset[:,0]
+			try:
+				dataset, az = merge_az(dataset[:,0:-2], dataset[:,-2], dataset[:,-1], aztimes, azdata, azrot, azoffset)
+				timestream = dataset[:,0]
+			except:
+				logfile.write('Bad azimuth data, skipping')
+				logfile.close()
+				return
 
 			# This is the old code, still in use for now.
 			# az = np.zeros(len(timestream))
@@ -724,7 +744,7 @@ class gbreduce:
 		print(len(t))
 
 		numinterp = 1000
-		moonpos_az, moonpos_el = get_moon_azel(self.telescope, t, numinterp)
+		moonpos_az, moonpos_el, moonpos_ra, moonpos_dec = get_moon_azel_radec(self.telescope, t, numinterp)
 		print(len(moonpos_az))
 		# moonpos = get_moon(t,self.telescope)
 		# moonpos_azel = moonpos.transform_to(AltAz(location=self.telescope,obstime=t))
@@ -735,14 +755,39 @@ class gbreduce:
 			start = 100
 			end = -100
 
-			# This will need to be calculated for each pixel, but for now just calculate it the first time.
-			# if pix%4 == 0:
-			if pix == 0:
+			if pix%4 == 0:
+				print(pix/4)
+				matchfreq = int(swp_params[int(pix/4)]['fr']/1e6)
+				match = -1
+				print(matchfreq)
+				try:
+					match = self.pixel_freq.index(float(matchfreq))
+				except:
+					try:
+						match = self.pixel_freq.index(float(matchfreq)-1.0)
+					except:
+						try:
+							match = self.pixel_freq.index(float(matchfreq)+1.0)
+						except:
+							match = -1
+
+				logfile.write('Match number is ' + str(match))
+				if match >= 0:
+					logfile.write('Using az offset ' + str(self.pixel_az[match]))
+					logfile.write('Using el offset ' + str(self.pixel_el[match]))
+					pixel_az = az - self.pixel_az[match]
+					pixel_el = el - self.pixel_el[match]
+				else:
+					pixel_az = az
+					pixel_el = el
+
 				# Calculate the positions for this pixel
-				skypos = self.calc_positions(az, el, t.jd)
+				skypos = self.calc_positions(pixel_az, pixel_el, t.jd)
 				healpix_pixel, centralpos = self.calc_healpix_pixels(skypos)
-				plot_tod(skypos.ra,self.outdir+prefix+plotext+'/plot_ra.png')
-				plot_tod(skypos.dec,self.outdir+prefix+plotext+'/plot_dec.png')
+				plot_tod(pixel_az,self.outdir+prefix+plotext+'/plot_az_'+str(pix/4)+'.png')
+				plot_tod(pixel_el,self.outdir+prefix+plotext+'/plot_el_'+str(pix/4)+'.png')
+				plot_tod(skypos.ra,self.outdir+prefix+plotext+'/plot_ra_'+str(pix/4)+'.png')
+				plot_tod(skypos.dec,self.outdir+prefix+plotext+'/plot_dec'+str(pix/4)+'.png')
 				# plot_tod(pa,self.outdir+prefix+plotext+'/plot_pa.png')
 
 
@@ -820,7 +865,7 @@ class gbreduce:
 			plt.savefig(self.outdir+prefix+'/hitmap_'+str(pix+1)+'.png')
 			plt.clf()
 
-			hp.gnomview(skymap,rot=centralpos,reso=20,title='Channel ' + str(pix+1))
+			hp.gnomview(skymap,rot=centralpos,reso=23,title='Channel ' + str(pix+1))
 			plt.savefig(self.outdir+prefix+'/skymap_'+str(pix+1)+'view.png')
 			plt.clf()
 
@@ -830,20 +875,19 @@ class gbreduce:
 			plt.savefig(self.outdir+prefix+'/skymap_'+str(pix+1)+'_skymap_std.png')
 			plt.clf()
 	
-			hp.gnomview(skymap,rot=centralpos,reso=20,title='Channel ' + str(pix+1),max=3.0*std,min=-3.0*std)
+			hp.gnomview(skymap,rot=centralpos,reso=23,title='Channel ' + str(pix+1),max=3.0*std,min=-3.0*std)
 			plt.savefig(self.outdir+prefix+'/skymap_'+str(pix+1)+'view_std.png')
 			plt.clf()
 
-			domoon = True
-			if domoon == True:
-				# Calculate the positions for this pixel, including the offset calculated from the moon
-				# skypos2 = self.calc_positions(az+az_correction, el+el_correction, t.jd)
-				azdist = az+az_correction - moonpos_az#.az.deg
-				eldist = el+el_correction - moonpos_el#.alt.deg
-				healpix_pixel2 = hp.ang2pix(self.nside, (np.pi/2)-eldist*np.pi/180.0, azdist*np.pi/180.0)
+			# Calculate the positions for this pixel, including the offset calculated from the moon
+			radist = skypos.ra.deg-moonpos_ra
+			decdist = skypos.dec.deg-moonpos_dec
+			usevals = np.where(np.sqrt(radist**2+decdist**2) < 10.0)
+			if sum(usevals[0]) > 10:
+				healpix_pixel2 = hp.ang2pix(self.nside, (np.pi/2)-decdist*np.pi/180.0, radist*np.pi/180.0)
 				skymap = np.zeros(self.npix, dtype=np.float)
 				hitmap = np.zeros(self.npix, dtype=np.float)
-				for i in range(0,len(healpix_pixel)):
+				for i in range(0,len(healpix_pixel2)):
 					if flag[i] == 1:
 						skymap[healpix_pixel2[i]] = skymap[healpix_pixel2[i]] + dataset[i,pix+1]
 						hitmap[healpix_pixel2[i]] = hitmap[healpix_pixel2[i]] + 1
@@ -856,70 +900,46 @@ class gbreduce:
 				self.write_healpix_map(skymap,prefix,self.outdir+prefix+'/skymap_moon_'+str(pix+1)+'.fits')
 				self.write_healpix_map(hitmap,prefix,self.outdir+prefix+'/hitmap_moon_'+str(pix+1)+'.fits')
 
+			# Write out the TOD for this pixel to disk
+			if (pix+1)%4 == 0:
+				ra_col = fits.Column(name='ra',format='E',array=np.array(Angle(skypos.ra).degree))
+				dec_col = fits.Column(name='dec',format='E',array=np.array(Angle(skypos.dec).degree))
+				jd_col = fits.Column(name='mjd',format='D',array=t.mjd)
+				col_list = [ra_col, dec_col, jd_col]
+				# for i in range(0,numpix*4):
+				# 	col_list.append(fits.Column(name='ch'+str(i),format='E',array=dataset[:,i]))
+				col_list.append(fits.Column(name='I',format='E',array=dataset[:,pix-2]))
+				col_list.append(fits.Column(name='Q',format='E',array=dataset[:,pix-1]))
+				col_list.append(fits.Column(name='A',format='E',array=dataset[:,pix]))
+				col_list.append(fits.Column(name='P',format='E',array=dataset[:,pix+1]))
+				cols = fits.ColDefs(col_list)
+				hdu = fits.BinTableHDU.from_columns(cols)
+
+				hdr = fits.Header()
+				hdr['INSTRUM'] = 'GroundBIRD'
+				hdr['REDCODE'] = 'gbreduce'
+				hdr['VERSION'] = str(self.ver)
+				hdr['OBSNAME'] = prefix[:-1]
+				hdr['PIX'] = str((pix+1)%4-1)
+				hdr['FREQ'] = str(freqs[int(pix/4)])
+				hdr['ARGA'] = str(swp_params[int(pix/4)]['arga'])
+				hdr['ABSA'] = str(swp_params[int(pix/4)]['absa'])
+				hdr['TAU'] = str(swp_params[int(pix/4)]['tau'])
+				hdr['FR'] = str(swp_params[int(pix/4)]['fr'])
+				hdr['QR'] = str(swp_params[int(pix/4)]['Qr'])
+				hdr['QC'] = str(swp_params[int(pix/4)]['Qc'])
+				hdr['PHI'] = str(swp_params[int(pix/4)]['phi0'])
+				hdr['C'] = str(swp_params[int(pix/4)]['c'])
+				primary_hdu = fits.PrimaryHDU(header=hdr)
+				hdul = fits.HDUList([primary_hdu, hdu])
+				hdul.writeto(self.outdir+prefix+prefix[:-1]+'_'+str(int(pix/4))+'_tod.fits',overwrite=True)
+
 
 		for i in range(0,len(healpix_pixel)):
 			skymap[healpix_pixel[i]] = az[i]
 		self.write_healpix_map(skymap,prefix,self.outdir+prefix+'/skymap_az.fits')
 		logfile.close()
-		# exit()
-		# # Write out the TOD to disk
-		# ra_col = fits.Column(name='ra',format='E',array=np.array(Angle(skypos.ra).degree))
-		# dec_col = fits.Column(name='dec',format='E',array=np.array(Angle(skypos.dec).degree))
-		# jd_col = fits.Column(name='mjd',format='E',array=t.jd-2400000.5)
-		# col1 = fits.Column(name='ch1',format='E',array=dataset[:,1])
-		# col2 = fits.Column(name='ch2',format='E',array=dataset[:,2])
-		# col3 = fits.Column(name='ch3',format='E',array=dataset[:,3])
-		# col4 = fits.Column(name='ch4',format='E',array=dataset[:,4])
-		# col5 = fits.Column(name='ch5',format='E',array=dataset[:,5])
-		# col6 = fits.Column(name='ch6',format='E',array=dataset[:,6])
-		# col7 = fits.Column(name='ch7',format='E',array=dataset[:,7])
-		# col8 = fits.Column(name='ch8',format='E',array=dataset[:,8])
-		# col9 = fits.Column(name='ch9',format='E',array=dataset[:,9])
-		# col10 = fits.Column(name='ch10',format='E',array=dataset[:,10])
-		# col11 = fits.Column(name='ch11',format='E',array=dataset[:,11])
-		# col12 = fits.Column(name='ch12',format='E',array=dataset[:,12])
-		# col13 = fits.Column(name='ch13',format='E',array=dataset[:,13])
-		# col14 = fits.Column(name='ch14',format='E',array=dataset[:,14])
-		# col15 = fits.Column(name='ch15',format='E',array=dataset[:,15])
-		# col16 = fits.Column(name='ch16',format='E',array=dataset[:,16])
-		# cols = fits.ColDefs([ra_col, dec_col, jd_col, col1, col2, col3, col4, col5, col6, col7, col8, col9, col10, col11, col12, col13, col14, col15, col16])
-		# hdu = fits.BinTableHDU.from_columns(cols)
 
-		# hdr = fits.Header()
-		# hdr['INSTRUM'] = 'GroundBIRD'
-		# hdr['VERSION'] = str(self.ver)
-		# hdr['OBSNAME'] = prefix
-		# primary_hdu = fits.PrimaryHDU(header=hdr)
-		# hdul = fits.HDUList([primary_hdu, hdu])
-		# hdul.writeto(self.outdir+prefix+prefix[:-1]+'_tod.fits',overwrite=True)
+
+
 		return
-
-	# def get_azimuth_data(self,start,end):
-	# 	# Work out which azimuth files we need to read in.
-	# 	startdir = datetime.utcfromtimestamp(int(start)).strftime('%Y/%m/%d')
-	# 	try:
-	# 		filelist = os.listdir(self.azdir + startdir)
-	# 	except:
-	# 		print('No azimuth data found!')
-	# 		return []
-
-	# 	enddir = datetime.utcfromtimestamp(int(end)).strftime('%Y/%m/%d')
-	# 	if enddir != startdir:
-	# 		# Also need to append these
-	# 		try:
-	# 			filelist.append(os.listdir(self.azdir + enddir))
-	# 		except:
-	# 			print('No azimuth data found for the second day!')
-
-	# 	print(filelist)
-	# 	return filelist
-
-
-	# def get_azimuth_data_from_dir(self,dir):
-	# 	results = []
-	# 	for file in os.listdir(self.aself.datadir):
-	# 		if searchtext in file:
-	# 			obsname = "-".join(file.split("-")[:-1])
-	# 			if obsname not in results:
-	# 				results.append(obsname)
-	# 	return results

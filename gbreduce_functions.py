@@ -304,10 +304,13 @@ def plot_ground(az, data, outfile,nazpoints=360):
 	np.savetxt(outfile+'.txt',[azbins, azvals])
 	return
 
-def get_moon_azel(location, times, numinterp=1000):
+
+def get_moon_azel_radec(location, times, numinterp=1000):
 	moonpos = ap.coordinates.get_moon(times[0::numinterp],location)
 	moonpos_azel = moonpos.transform_to(ap.coordinates.AltAz(location=location,obstime=times[0::numinterp]))
 	az = np.interp(times.mjd, times[0::numinterp].mjd, moonpos_azel.az.deg)
 	el = np.interp(times.mjd, times[0::numinterp].mjd, moonpos_azel.alt.deg)
-	return az, el
+	ra = np.interp(times.mjd, times[0::numinterp].mjd, moonpos.ra.deg)
+	dec = np.interp(times.mjd, times[0::numinterp].mjd, moonpos.dec.deg)
+	return az, el, ra, dec
 

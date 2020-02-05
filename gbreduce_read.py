@@ -31,6 +31,16 @@ import pytz     ## pip install pytz
 # mytz = pytz.timezone('UTC')             ## Set your timezone
 # datetime = mytz.normalize(mytz.localize(datetime, is_dst=False))  ## Set is_dst accordingly
 
+def get_pixinfo(filename, focallength, angle):
+	npix,mod,mod_pix,x,y,theta,phi,omt1,omt2, pixelfreq = np.loadtxt(filename,unpack=True)
+	pixelfreq2 = pixelfreq.tolist()
+	x = (x/focallength)*180.0/np.pi
+	y = (y/focallength)*180.0/np.pi
+	new_x = x*np.cos(angle*np.pi/180.0) - y*np.sin(angle*np.pi/180.0)
+	new_y = x*np.sin(angle*np.pi/180.0) + y*np.cos(angle*np.pi/180.0)
+
+	return new_x, new_y, pixelfreq2
+
 def get_az_data(filename):
 	rotlog = RotLog_file.RotLog_file(filename)
 	unixtime = float(rotlog.start_time)
@@ -150,12 +160,12 @@ def fetch_azdata(indir, starttime, endtime, compressed=False):
 		for file in filelist:
 			time = file[-18:-12]
 			date = file[0:10]
-			print(date[0:4]+' ' + date[5:7] + ' ' + date[8:10] +" " + time[0:2] + ' ' + time[2:4] + ' ' + time[4:6])
+			# print(date[0:4]+' ' + date[5:7] + ' ' + date[8:10] +" " + time[0:2] + ' ' + time[2:4] + ' ' + time[4:6])
 			timestamp = datetime.datetime(int(date[0:4]),int(date[5:7]),int(date[8:10]),int(time[0:2]),int(time[2:4]),int(time[4:6]),tzinfo=pytz.timezone('UTC')).timestamp()
 			starttimes.append(timestamp)
-			print(starttime)
-			print(timestamp)
-			print(endtime)
+			# print(starttime)
+			# print(timestamp)
+			# print(endtime)
 			if timestamp > starttime and timestamp < endtime:
 				if len(use_files) != 0:
 					use_files[-1] = 1
