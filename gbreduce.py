@@ -930,6 +930,14 @@ class gbreduce:
 				hdr['QC'] = str(swp_params[int(pix/4)]['Qc'])
 				hdr['PHI'] = str(swp_params[int(pix/4)]['phi0'])
 				hdr['C'] = str(swp_params[int(pix/4)]['c'])
+
+				if match >= 0:
+					hdr['AZOFF'] = str(self.pixel_az[match])
+					hdr['ELOFF'] = str(self.pixel_el[match])
+				else:
+					hdr['AZOFF'] = str(0.0)
+					hdr['ELOFF'] = str(0.0)
+
 				primary_hdu = fits.PrimaryHDU(header=hdr)
 				hdul = fits.HDUList([primary_hdu, hdu])
 				hdul.writeto(self.outdir+prefix+prefix[:-1]+'_'+str(int(pix/4))+'_tod.fits',overwrite=True)
