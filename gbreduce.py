@@ -79,6 +79,10 @@ class gbreduce:
 		else:
 			return 2.0 * diameter**2 * frequency / self.c
 
+	def get_second_brightest(self, timestream):
+		maxpix = np.argmax(np.abs(timestream))
+		timestream[maxpix] = np.median(timestream)
+		return np.argmax(np.abs(timestream))
 
 	def calc_positions(self, az, el, jd):
 
@@ -106,6 +110,14 @@ class gbreduce:
 		hdul = fits.HDUList([hdu])
 		hdul.writeto(outputname)
 
+	def write_fits(self, ra, dec, jd, I, Q, A, P, hdr, outfile):
+		cols = fits.ColDefs([fits.Column(name='ra',format='E',array=np.array(ra)), fits.Column(name='dec',format='E',array=np.array(dec)), fits.Column(name='mjd',format='D',array=jd), fits.Column(name='I',format='E',array=I), fits.Column(name='Q',format='E',array=Q), fits.Column(name='A',format='E',array=A), fits.Column(name='P',format='E',array=P)])
+		hdu = fits.BinTableHDU.from_columns(cols)
+		primary_hdu = fits.PrimaryHDU(header=hdr)
+		hdul = fits.HDUList([primary_hdu, hdu])
+		hdul.writeto(outfile,overwrite=True)
+
+
 	def calc_healpix_pixels(self, skypos):
 		if self.coordsys == 0:
 			healpix_pixel = hp.ang2pix(self.nside, (np.pi/2)-Angle(skypos.b).radian, Angle(skypos.l).radian)
@@ -128,6 +140,22 @@ class gbreduce:
 		# 	print(args[1:])
 		hp.write_map(outputname,data,overwrite=True,extra_header=extra_header)
 		return 
+
+	def get_skymap(self, healpix_pixel,dataset, flag=[]):
+		skymap = np.zeros(self.npix, dtype=np.float)
+		hitmap = np.zeros(self.npix, dtype=np.float)
+		if len(flag) == 0:
+			flag = np.ones(len(healpix_pixel))
+		for i in range(0,len(healpix_pixel)):
+			if flag[i] == 1:
+				skymap[healpix_pixel[i]] = skymap[healpix_pixel[i]] + dataset[i]
+				hitmap[healpix_pixel[i]] = hitmap[healpix_pixel[i]] + 1
+		for i in range(0,len(skymap)):
+			if hitmap[i] >= 1:
+				skymap[i] = skymap[i]/hitmap[i]
+			else:
+				skymap[i] = hp.pixelfunc.UNSEEN
+		return skymap, hitmap
 
 	def combine_sky_maps(self,skymaps,hitmaps,prefix,outputname,centralpos=(0,0),plotlimit=0.0):
 
@@ -218,6 +246,7 @@ class gbreduce:
 					todolist.append(subdir+folder)
 		print(todolist)
 
+		badrun = []
 		if skipfirst == 0:
 			trip = 1
 		else:
@@ -239,12 +268,19 @@ class gbreduce:
 				if 'kids' in line and 'list' in line:
 					todo.append(line.replace('kids','').replace('list',''))
 			for line in todo:
+				if 'GB01' in line:
+					continue
 				swpfile = 'swp'+line+'rawdata'
 				todfile = 'tod'+line+'rawdata'
 				kidparams = 'kids'+line+'list'
-				swp_params = self.analyse_swp(name+line.replace('.',''),self.datadir+folder+swpfile,kidparams=self.datadir+folder+kidparams)
-				print(swp_params)
-				tod_analysis = self.analyse_tod(name+line.replace('.',''),self.datadir+folder+todfile,kidparams=self.datadir+folder+kidparams,swp_params=swp_params,starttime=starttime)
+				try:
+					swp_params = self.analyse_swp(name+line.replace('.',''),self.datadir+folder+swpfile,kidparams=self.datadir+folder+kidparams)
+					print(swp_params)
+					tod_analysis = self.analyse_tod(name+line.replace('.',''),self.datadir+folder+todfile,kidparams=self.datadir+folder+kidparams,swp_params=swp_params,starttime=starttime)
+				except:
+					badrun.append(name+line)
+		if len(badrun) > 0:
+			print('There were some failed runs: ' + str(badrun))
 		return
 
 
@@ -324,21 +360,25 @@ class gbreduce:
 
 		# Get the first fit from mkids_lib
 		if self.use_mkidpylibs == True:
-			kid = klib.kidana.KidAnalyzer()
+			# kid = klib.kidana.KidAnalyzer()
 			paramset = []
 			for i in range(len(centerfreqs)*2):
 				try:
-					kid.swpfromfile('rhea',filename,lo,i)
-					kid.swp.fitIQ(nfwhm=3, fitter='gaolinbg')
-					# kid.swp.fitresult.report()
-					mkid_fit_params = kid.swp.fitresult.values()
+					swpset = klib.readfile_swp('rhea',filename,i,lo)
 
-					fig,ax = klib.plotter.plotSwp(kid.swp,kind='rawdata',title='rawdata',color='blue',ls=':',lw=1,marker='.')
-					klib.plotter.plotSwp(kid.swp,kind='fitdata.rawdata',ax=ax,color='red',marker='',lw=2,ls='-',)
+					# Special case for the RIKEN KID
+					if centerfreqs[i] == -31900000:
+						swpset.fitIQ(nfwhm=-1, frqrange=[4.732e9,4.734e9], fitter='gaolinbg')
+					else:
+						swpset.fitIQ(nfwhm=3, fitter='gaolinbg')
+					mkid_fit_params = swpset.fitresult.values()
+
+					fig,ax = klib.plotter.plotSwp(swpset,kind='rawdata',title='rawdata',color='blue',ls=':',lw=1,marker='.')
+					klib.plotter.plotSwp(swpset,kind='fitdata.rawdata',ax=ax,color='red',marker='',lw=2,ls='-',)
 					fig.savefig(self.outdir+prefix+plotext+'raw_kidfit_'+str(i)+'.png')
 					fig.clf()
-					fig,ax = klib.plotter.plotSwp(kid.swp,kind='rwdata',title='rwdata',color='blue',ls=':',lw=1,marker='.')
-					klib.plotter.plotSwp(kid.swp,kind='fitdata.rwdata',ax=ax,color='red',marker='',lw=2,ls='-',)
+					fig,ax = klib.plotter.plotSwp(swpset,kind='rwdata',title='rwdata',color='blue',ls=':',lw=1,marker='.')
+					klib.plotter.plotSwp(swpset,kind='fitdata.rwdata',ax=ax,color='red',marker='',lw=2,ls='-',)
 					fig.savefig(self.outdir+prefix+plotext+'rw_kidfit_'+str(i)+'.png')
 
 					print(mkid_fit_params)
@@ -347,8 +387,11 @@ class gbreduce:
 					# print(params)
 					paramset.append(mkid_fit_params)
 				except:
-					# Sweep fitting has failed for some reason, just use the one for the previous channel for now.
-					paramset.append(paramset[-1])
+					# Sweep fitting has failed for some reason, just use the one for the previous channel for now, if there was one
+					if len(paramset) >= 1:
+						paramset.append(paramset[-1])
+					else:
+						paramset.append([])
 			# exit()
 		else:
 			# dataset = dataset[1300:1800,:]
@@ -540,6 +583,7 @@ class gbreduce:
 		else:
 			kids = read_kidslist(kidparams)
 			print(kids)
+			logfile.write(str(kids)+'\n')
 			centerfreqs = kids['kids_freqs']
 			lo = kids['sg_freq']
 			on_channels=kids['kids']
@@ -557,6 +601,7 @@ class gbreduce:
 		freqs = np.asarray(centerfreqs)
 		freqs = freqs +lo
 		print(freqs)
+		logfile.write('Frequencies ' + str(freqs) + '\n\n')
 
 		# Read in the data
 		# rawdata = read_rhea_tod(filename)
@@ -757,7 +802,7 @@ class gbreduce:
 
 			if pix%4 == 0:
 				print(pix/4)
-				matchfreq = int(swp_params[int(pix/4)]['fr']/1e6)
+				matchfreq = int(freqs[int(pix/4)]/1e6)
 				match = -1
 				print(matchfreq)
 				try:
@@ -771,12 +816,12 @@ class gbreduce:
 						except:
 							match = -1
 
-				logfile.write('Match number is ' + str(match))
+				logfile.write('Match number is ' + str(match)+'\n')
 				if match >= 0:
-					logfile.write('Using az offset ' + str(self.pixel_az[match]))
-					logfile.write('Using el offset ' + str(self.pixel_el[match]))
-					pixel_az = az - self.pixel_az[match]
-					pixel_el = el - self.pixel_el[match]
+					logfile.write('Using az offset ' + str(self.pixel_az[match])+'\n')
+					logfile.write('Using el offset ' + str(self.pixel_el[match])+'\n')
+					pixel_az = az + self.pixel_az[match]
+					pixel_el = el + self.pixel_el[match]
 				else:
 					pixel_az = az
 					pixel_el = el
@@ -801,7 +846,7 @@ class gbreduce:
 			num_to_average = 100
 			if 'GB02' in prefix:
 				num_to_average = 500
-			dataset[:,pix+1] = subtractbaseline(dataset[:,pix+1],option=0,navg=num_to_average)
+			dataset_sub = subtractbaseline(dataset[:,pix+1],option=0,navg=num_to_average)
 
 			# # Correct for any offset
 			# offset = np.median(dataset[:,pix+1])
@@ -822,39 +867,32 @@ class gbreduce:
 			# 	scale = scale2
 			# dataset[:,pix+1] /= scale
 
-			plot_tod(dataset[:,pix+1],self.outdir+prefix+plotext+'/plot_'+str(pix+1)+'_rescale.png')
-			plot_val_tod(az[start:end],dataset[start:end,pix+1],self.outdir+prefix+plotext+'/plot_'+str(pix+1)+'_az.png')
+			plot_tod(dataset_sub,self.outdir+prefix+plotext+'/plot_'+str(pix+1)+'_rescale.png')
+			plot_val_tod(az[start:end],dataset_sub[start:end],self.outdir+prefix+plotext+'/plot_'+str(pix+1)+'_az.png')
 
 			try:
-				maxpix = np.argmax(np.abs(dataset[start:end,pix+1]))
+				maxpix = self.get_second_brightest(dataset_sub)
 			except:
 				logfile.write('Something odd happened with getting argmax of the dataset!')
 				return 0
 			logfile.write('At array index ' + str(maxpix)+'\n')
-			logfile.write('Maximum value is ' + str(dataset[maxpix,pix+1])+'\n')
-			logfile.write('At azimuth ' + str(az[maxpix])+'\n')
-			logfile.write('At elevation ' + str(el[maxpix])+'\n')
-			moonpos = get_moon(t[maxpix],self.telescope)
-			logfile.write(str(moonpos)+'\n')
-			logfile.write(str(moonpos_az[maxpix])+'\n')
-			logfile.write(str(moonpos_el[maxpix])+'\n')
-			az_correction = az[maxpix]-moonpos_az[maxpix]#.az.deg
-			el_correction = el[maxpix]-moonpos_el[maxpix]#.alt.deg
-			logfile.write('Difference is ' + str(az_correction) + ' in azimuth and ' + str(el_correction) + ' in elevation.')
+			logfile.write('Maximum value is ' + str(dataset_sub[maxpix])+'\n')
+			logfile.write('At azimuth ' + str(pixel_az[maxpix])+'\n')
+			logfile.write('At elevation ' + str(pixel_el[maxpix])+'\n')
+			# moonpos = get_moon(t[maxpix],self.telescope)
+			# logfile.write(str(moonpos)+'\n')
+			logfile.write('Moon was at azimuth' + str(moonpos_az[maxpix])+'\n')
+			logfile.write('Moon was at elevation ' + str(moonpos_el[maxpix])+'\n')
+			logfile.write('At RA' + str(skypos[maxpix].ra.deg)+'\n')
+			logfile.write('At Dec' + str(skypos[maxpix].dec.deg)+'\n')
+			logfile.write('Moon was at RA ' + str(moonpos_ra[maxpix])+'\n')
+			logfile.write('Moon was at Dec ' + str(moonpos_dec[maxpix])+'\n')
+			az_correction = pixel_az[maxpix]-moonpos_az[maxpix]#.az.deg
+			el_correction = pixel_el[maxpix]-moonpos_el[maxpix]#.alt.deg
+			logfile.write('Difference is ' + str(az_correction) + ' in azimuth and ' + str(el_correction) + ' in elevation.\n')
 			# exit()
 
-			skymap = np.zeros(self.npix, dtype=np.float)
-			hitmap = np.zeros(self.npix, dtype=np.float)
-			for i in range(0,len(healpix_pixel)):
-				if flag[i] == 1:
-					skymap[healpix_pixel[i]] = skymap[healpix_pixel[i]] + dataset[i,pix+1]
-					hitmap[healpix_pixel[i]] = hitmap[healpix_pixel[i]] + 1
-			for i in range(0,len(skymap)):
-				if hitmap[i] >= 1:
-					skymap[i] = skymap[i]/hitmap[i]
-				else:
-					skymap[i] = hp.pixelfunc.UNSEEN
-
+			skymap, hitmap = self.get_skymap(healpix_pixel,dataset_sub,flag)
 			self.write_healpix_map(skymap,prefix,self.outdir+prefix+'/skymap_'+str(pix+1)+'.fits')
 			self.write_healpix_map(hitmap,prefix,self.outdir+prefix+'/hitmap_'+str(pix+1)+'.fits')
 
@@ -885,35 +923,12 @@ class gbreduce:
 			usevals = np.where(np.sqrt(radist**2+decdist**2) < 10.0)
 			if sum(usevals[0]) > 10:
 				healpix_pixel2 = hp.ang2pix(self.nside, (np.pi/2)-decdist*np.pi/180.0, radist*np.pi/180.0)
-				skymap = np.zeros(self.npix, dtype=np.float)
-				hitmap = np.zeros(self.npix, dtype=np.float)
-				for i in range(0,len(healpix_pixel2)):
-					if flag[i] == 1:
-						skymap[healpix_pixel2[i]] = skymap[healpix_pixel2[i]] + dataset[i,pix+1]
-						hitmap[healpix_pixel2[i]] = hitmap[healpix_pixel2[i]] + 1
-				for i in range(0,len(skymap)):
-					if hitmap[i] >= 1:
-						skymap[i] = skymap[i]/hitmap[i]
-					else:
-						skymap[i] = hp.pixelfunc.UNSEEN
-
+				skymap, hitmap = self.get_skymap(healpix_pixel2,dataset_sub,flag)
 				self.write_healpix_map(skymap,prefix,self.outdir+prefix+'/skymap_moon_'+str(pix+1)+'.fits')
 				self.write_healpix_map(hitmap,prefix,self.outdir+prefix+'/hitmap_moon_'+str(pix+1)+'.fits')
 
 			# Write out the TOD for this pixel to disk
 			if (pix+1)%4 == 0:
-				ra_col = fits.Column(name='ra',format='E',array=np.array(Angle(skypos.ra).degree))
-				dec_col = fits.Column(name='dec',format='E',array=np.array(Angle(skypos.dec).degree))
-				jd_col = fits.Column(name='mjd',format='D',array=t.mjd)
-				col_list = [ra_col, dec_col, jd_col]
-				# for i in range(0,numpix*4):
-				# 	col_list.append(fits.Column(name='ch'+str(i),format='E',array=dataset[:,i]))
-				col_list.append(fits.Column(name='I',format='E',array=dataset[:,pix-2]))
-				col_list.append(fits.Column(name='Q',format='E',array=dataset[:,pix-1]))
-				col_list.append(fits.Column(name='A',format='E',array=dataset[:,pix]))
-				col_list.append(fits.Column(name='P',format='E',array=dataset[:,pix+1]))
-				cols = fits.ColDefs(col_list)
-				hdu = fits.BinTableHDU.from_columns(cols)
 
 				hdr = fits.Header()
 				hdr['INSTRUM'] = 'GroundBIRD'
@@ -921,7 +936,7 @@ class gbreduce:
 				hdr['VERSION'] = str(self.ver)
 				hdr['OBSNAME'] = prefix[:-1]
 				hdr['PIX'] = str((pix+1)%4-1)
-				hdr['FREQ'] = str(freqs[int(pix/4)])
+				hdr['CENFREQ'] = str(freqs[int(pix/4)])
 				hdr['ARGA'] = str(swp_params[int(pix/4)]['arga'])
 				hdr['ABSA'] = str(swp_params[int(pix/4)]['absa'])
 				hdr['TAU'] = str(swp_params[int(pix/4)]['tau'])
@@ -938,9 +953,24 @@ class gbreduce:
 					hdr['AZOFF'] = str(0.0)
 					hdr['ELOFF'] = str(0.0)
 
-				primary_hdu = fits.PrimaryHDU(header=hdr)
-				hdul = fits.HDUList([primary_hdu, hdu])
-				hdul.writeto(self.outdir+prefix+prefix[:-1]+'_'+str(int(pix/4))+'_tod.fits',overwrite=True)
+				self.write_fits(Angle(skypos.ra).degree, Angle(skypos.dec).degree, t.mjd, dataset[:,pix-2], dataset[:,pix-1], dataset[:,pix], dataset[:,pix+1], hdr, self.outdir+prefix+prefix[:-1]+'_'+str(int(pix/4))+'_tod.fits')
+				# ra_col = fits.Column(name='ra',format='E',array=np.array(Angle(skypos.ra).degree))
+				# dec_col = fits.Column(name='dec',format='E',array=np.array(Angle(skypos.dec).degree))
+				# jd_col = fits.Column(name='mjd',format='D',array=t.mjd)
+				# col_list = [ra_col, dec_col, jd_col]
+				# # for i in range(0,numpix*4):
+				# # 	col_list.append(fits.Column(name='ch'+str(i),format='E',array=dataset[:,i]))
+				# col_list.append(fits.Column(name='I',format='E',array=dataset[:,pix-2]))
+				# col_list.append(fits.Column(name='Q',format='E',array=dataset[:,pix-1]))
+				# col_list.append(fits.Column(name='A',format='E',array=dataset[:,pix]))
+				# col_list.append(fits.Column(name='P',format='E',array=dataset[:,pix+1]))
+				# cols = fits.ColDefs(col_list)
+				# hdu = fits.BinTableHDU.from_columns(cols)
+
+
+				# primary_hdu = fits.PrimaryHDU(header=hdr)
+				# hdul = fits.HDUList([primary_hdu, hdu])
+				# hdul.writeto(self.outdir+prefix+prefix[:-1]+'_'+str(int(pix/4))+'_tod.fits',overwrite=True)
 
 
 		for i in range(0,len(healpix_pixel)):

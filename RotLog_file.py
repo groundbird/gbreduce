@@ -38,9 +38,9 @@ def read_packet(buff):
         _e.print()
     return time, data, ptype
 
-# Originally -55.0, changed to -42.0 on 17-Jan-2020, then -42.5 on 4 February 2020
+# Originally -55.0, changed to -42.0 on 17-Jan-2020, then -42.5 on 4 February 2020, and back to -55.0 on 13 February
 def conv_angle(_v):
-    return (-(float(360.0 * _v / 8192.))-42.5) % 360.0
+    return (-(float(360.0 * _v / 8192.))-55.0) % 360.0
 
 # def conv_angle(_v):
 #     return float(360.0 * _v / 8192.)

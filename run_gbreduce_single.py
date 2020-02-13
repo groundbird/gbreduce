@@ -52,7 +52,7 @@ run = gbreduce.gbreduce(outdir=outdir,\
 
 
 # Run a batch job
-subdir = 'kiddata/20191111/'
+subdir = 'kiddata/20200204/'
 skipfirst = 0 # Note: this already excludes folders containing files with 'KSPS' in the filenames
 run.runset(subdir=subdir,ext=ext,skipfirst=skipfirst)
 
@@ -69,7 +69,5 @@ run.runset(subdir=subdir,ext=ext,skipfirst=skipfirst)
 # # swp_params = []
 # tod_analysis = run.analyse_tod(name+postfix,basedir+folder+todfile.replace('.',postfix+'.'),kidparams=basedir+folder+kidparams.replace('.',postfix+'.'),swp_params=swp_params,starttime=starttime)
 
-# Close
-MPI.Finalize()
 
 # EOF
