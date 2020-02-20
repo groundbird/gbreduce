@@ -36,7 +36,7 @@ pixinfo = 'gb_pixinfo_20191217.txt'
 nside = 512
 
 # Settings for the run
-ext = '_swp_poscor'
+ext = '_swp_poscor55'
 
 
 # Start the class
@@ -50,11 +50,36 @@ run = gbreduce.gbreduce(outdir=outdir,\
 	pixinfo=pixinfo,\
 	nside=nside, use_mkidpylibs=True)
 
-
 # Run a batch job
-subdir = 'kiddata/20200204/'
+# subdir = 'kiddata/20200204/'
+# skipfirst = 0 # Note: this already excludes folders containing files with 'KSPS' in the filenames
+# run.runset(subdir=subdir,ext=ext,skipfirst=skipfirst)
+
+# Run through all
+folderlist = os.listdir(datadir)
+work_array = []
+trip = 0
+count = 0
+startdir=''
+enddir=''
+if startdir == '':
+	trip = 1
+for folder in sorted(folderlist):
+	if trip or startdir in folder:
+		work_array.append([count, folder])
+		trip = 1
+		count += 1
+	if enddir != '':
+		if enddir in folder:
+			trip = 0
 skipfirst = 0 # Note: this already excludes folders containing files with 'KSPS' in the filenames
-run.runset(subdir=subdir,ext=ext,skipfirst=skipfirst)
+for i, subdir in work_array:
+	print(subdir)
+	try:
+		run.runset(subdir='kiddata/'+subdir+'/',ext=ext,skipfirst=skipfirst)
+	except:
+		continue
+
 
 # # Or run a single job
 # folder = 'kiddata/20200109/data_005248/'

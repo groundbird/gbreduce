@@ -495,7 +495,7 @@ def fetch_domedata(indir, starttime, endtime):
 	valset = []
 	# We can just read in all the data and return it, since there isn't that much
 	for file in filelist:
-		print(file)
+		print(indir+file)
 		data = np.loadtxt(indir+file,unpack=False,dtype={'names':('date','unix','val1','val2','val3','val4','water'),'formats':('S1','d','S6','S6','S6','S6','S3')})
 		# print(data)
 		# print(data.size)
