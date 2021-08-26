@@ -2,7 +2,7 @@
 # -*- coding: utf-8  -*-
 #
 # Various functions related to reading GroundBIRD data, separate from the class
-# 
+#
 # Version history:
 #
 # 30-Sep-2019  M. Peel       Started
@@ -26,6 +26,7 @@ import scipy.stats as stats
 import RotLog_file
 import RotLog_file_oldversion
 import pytz     ## pip install pytz
+import gc
 
 # Make sure we are using UTC!
 # mytz = pytz.timezone('UTC')             ## Set your timezone
@@ -95,7 +96,7 @@ def compress_and_plot_azdata(indir,out_prefix,reload=False,savedata=True):
 	plt.clf()
 
 	return
-	
+
 
 
 def fetch_azdata(indir, starttime, endtime, compressed=False):
@@ -663,40 +664,23 @@ def read_rhea_swp_data(fname, length=None, offset=0):
 		i += 1
 		# if i > 20:
 		# 	exit()
-	# We need one last dataset appending.
 	dataset.append(chan_accumulation / 10)
+	del inputdata
+	del chan_accumulation
+	gc.collect()
+	# We need one last dataset appending.
 	return (np.asarray(freqset,dtype=np.float64), np.asarray(dataset,dtype=np.float64))
 
 def read_rhea_data(fname, length=None, offset=0):
-	inputdata = read_file(fname, length = length, offset = offset, sync=True)
+	inputdata = read_file(fname, length = length, offset = offset, sync=True)#,packet_size=735)
 	dataset = []
-	i = 0
 	for datum in inputdata:
-		# print(datum)
-		# i += 1
-		# if i > 20:
-		# 	exit()
-
-		# Skip the first data point
-		# if i == 1:
-			# continue
-		# print(np.shape(datum))
-		# print(datum)
-		# print(len(datum))
-		# i += 1
-		# if i > 1000:
-		# 	exit()
-		datum2 = datum[1].copy()
-		datum2.insert(0,datum[0])
-		datum2.append(datum[2])
-		datum2.append(datum[3])
-		dataset.append(datum2)
-
-		# datum2 = np.asarray(datum[1])
-		# datum2 = np.insert(datum2,0,datum[0])
-		# print(datum2)
-		# exit(0)
-		# dataset = np.append(datum2)
-		# print(dataset)
+		datum[1].insert(0,datum[0])
+		datum[1].append(datum[2])
+		datum[1].append(datum[3])
+		dataset.append(datum[1])
+		del datum
+	inputdata.close()
+	del inputdata
+	gc.collect()
 	return np.asarray(dataset,dtype=np.float64)
-	# return [time, data, tmp, tmp1]

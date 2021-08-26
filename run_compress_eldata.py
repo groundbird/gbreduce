@@ -46,7 +46,7 @@ import os
 # compress_and_plot_eldata(indir,'el_2019-10-15_rot',reload=True)
 
 # basedir = '/net/nas/proyectos/cosmology/groundbird/'
-basedir = '/Volumes/iOmega/GroundBIRD/'
+basedir = '/Volumes/Toshiba5TB2/GroundBIRD/'
 
 indir = basedir+'data/logbdata/el_enc/2019/'
 folders = [f.path for f in os.scandir(indir) if f.is_dir() ]
@@ -54,6 +54,8 @@ redo_all = False
 print(folders)
 for folder in folders:
 	# print(folder)
+	# if '08' not in folder:
+	# 	continue
 	folders2 = [f.path for f in os.scandir(folder) if f.is_dir() ]
 	for folder2 in folders2:
 		# print(folder2)

@@ -2,7 +2,7 @@
 # -*- coding: utf-8  -*-
 #
 # Various functions related to gbreduce, separate from the class
-# 
+#
 # Version history:
 #
 # 30-Sep-2019  M. Peel       Duplicate from tfgi_functions
@@ -18,7 +18,7 @@ import astropy.units as u
 from scipy.optimize import curve_fit
 import os
 from lmfit import minimize, Parameters, fit_report
-
+import gc
 
 def calc_beam_area(beam):
 	return (np.pi * (beam*np.pi/180.0)**2)/(4.0*np.log(2.0))
@@ -127,16 +127,18 @@ def plot_tod(data, outputname,formatstr='b.'):
 	plt.xlabel('Samples')
 	plt.ylabel('Power')
 	plt.savefig(outputname)
-	plt.close()
 	plt.clf()
+	plt.close()
+	gc.collect()
 	return
 
 # Plot the TODs against a given set of vals, e.g. az or el.
 def plot_val_tod(val, data, outputname,formatstr='b.'):
 	plt.plot(val,data,formatstr)
 	plt.savefig(outputname)
-	plt.close()
 	plt.clf()
+	plt.close()
+	gc.collect()
 	return
 
 
@@ -166,7 +168,7 @@ def Fit_SkewedLorentizian_Func(pars, f, data=None):
 	if data is None:
 		return model
 	return model - data
-	
+
 def Fit_SkewedLorentizian(f, t):
 	initparams = Fit_SkewedLorentizian_initparams(f, t)
 	fit_params = Parameters()
@@ -223,7 +225,7 @@ def Fit_7para_Func(pars, f, data=None):
 		return model
 	resid = model - data
 	return resid.view(np.float)
-	
+
 def Fit_7para(f, t, **kwargs):
 	initparams = Fit_7para_initparams(f, t, **kwargs)
 	fit_params = Parameters()
@@ -301,16 +303,24 @@ def plot_ground(az, data, outfile,nazpoints=360):
 	plt.ylabel('Amplitude')
 	plt.savefig(outfile)
 	plt.clf()
+	plt.close()
 	np.savetxt(outfile+'.txt',[azbins, azvals])
+
+	del azbins
+	del azvals
+	del azhits
+	gc.collect()
 	return
 
 
-def get_moon_azel_radec(location, times, numinterp=1000):
-	moonpos = ap.coordinates.get_moon(times[0::numinterp],location)
-	moonpos_azel = moonpos.transform_to(ap.coordinates.AltAz(location=location,obstime=times[0::numinterp]))
-	az = np.interp(times.mjd, times[0::numinterp].mjd, moonpos_azel.az.deg)
-	el = np.interp(times.mjd, times[0::numinterp].mjd, moonpos_azel.alt.deg)
-	ra = np.interp(times.mjd, times[0::numinterp].mjd, moonpos.ra.deg)
-	dec = np.interp(times.mjd, times[0::numinterp].mjd, moonpos.dec.deg)
+def get_body_azel_radec(location, times, numinterp=1000,body='moon'):
+	bodypos = ap.coordinates.get_body(body,times[0::numinterp],location)
+	bodypos_azel = bodypos.transform_to(ap.coordinates.AltAz(location=location,obstime=times[0::numinterp]))
+	az = np.interp(times.mjd, times[0::numinterp].mjd, bodypos_azel.az.deg)
+	el = np.interp(times.mjd, times[0::numinterp].mjd, bodypos_azel.alt.deg)
+	ra = np.interp(times.mjd, times[0::numinterp].mjd, bodypos.ra.deg)
+	dec = np.interp(times.mjd, times[0::numinterp].mjd, bodypos.dec.deg)
+	del bodypos_azel
+	del bodypos
+	gc.collect()
 	return az, el, ra, dec
-

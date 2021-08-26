@@ -1,6 +1,6 @@
 #!/usr/bin/env python
 # -*- coding: utf-8  -*-
-# 
+#
 # This is an example run script for gbreduce
 
 import healpy as hp
@@ -29,14 +29,15 @@ datadir = basedir+'kiddata/'
 azdir = basedir+'logbdata/az_enc/'
 # Set this to the location of the elevation encoder data (in compressed format if elcompressed=True)
 eldir = basedir+'logbdata/el_enc/'
-elcompressed=False
+elcompressed=True
 domedir = basedir+'logdata/dome/'
 tempdir = basedir+'logdata/thermo/'
-pixinfo = 'gb_pixinfo_20191217.txt'
+# pixinfo = 'gb_pixinfo_20191217.txt'
+pixinfo = 'gb_pixinfo_20210730.txt'
 nside = 512
 
 # Settings for the run
-ext = '_swp_poscor55'
+ext = '_swp'
 
 
 # Start the class
@@ -60,8 +61,11 @@ folderlist = os.listdir(datadir)
 work_array = []
 trip = 0
 count = 0
-startdir=''
+# startdir='20210416'
+# startdir='20210801'
 enddir=''
+startdir='20210725'
+# enddir='20210727'
 if startdir == '':
 	trip = 1
 for folder in sorted(folderlist):
@@ -75,10 +79,10 @@ for folder in sorted(folderlist):
 skipfirst = 0 # Note: this already excludes folders containing files with 'KSPS' in the filenames
 for i, subdir in work_array:
 	print(subdir)
-	try:
-		run.runset(subdir='kiddata/'+subdir+'/',ext=ext,skipfirst=skipfirst)
-	except:
-		continue
+	# try:
+	run.runset(subdir='kiddata/'+subdir+'/',ext=ext,skipfirst=skipfirst)
+	# except:
+	# 	continue
 
 
 # # Or run a single job

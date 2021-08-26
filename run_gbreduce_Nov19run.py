@@ -25,7 +25,7 @@ mpl.rcParams['agg.path.chunksize'] = 10000
 # Set this to where you have a copy of the data
 # basedir = '/Users/mpeel/Documents/GroundBIRD/data/'
 # basedir = '/net/nas/proyectos/groundbird/data/'
-basedir = '/Volumes/iOmega/GroundBIRD/data/'
+basedir = '/Volumes/Toshiba5TB2/GroundBIRD/data/'
 # Set this to where you want to output stuff. The directory should already exist.
 # NB: subdirectories will automatically be created for each dataset.
 # outdir = '/Users/mpeel/Documents/git/gbreduce/output/'
@@ -137,7 +137,7 @@ toreduce.append(['20191112/data_124958',datetime(2019,11,12,12,50,20).timestamp(
 toreduce.append(['20191112/data_135022',datetime(2019,11,12,13,50,45).timestamp()])
 
 # postfix='_swp_sub'
-postfix='_swp_sub100'
+postfix='_swp_poscor55'
 skymaps = []
 hitmaps = []
 for i in range(0,16):
@@ -148,8 +148,8 @@ for i in range(0,16):
 	print(hitmaps)
 	prefix='combine'
 	outputname='201911_longrun_'+postfix+str(i+1)+''
-# 	run.combine_sky_maps(skymaps,hitmaps,prefix,outputname,centralpos=(0,0),plotlimit=0.0)
-# exit()
+	run.combine_sky_maps(skymaps,hitmaps,prefix,outputname,centralpos=(0,0),plotlimit=0.0)
+exit()
 
 
 
