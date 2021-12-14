@@ -62,9 +62,9 @@ work_array = []
 trip = 0
 count = 0
 # startdir='20210416'
-# startdir='20210801'
+startdir='20210801'
 enddir=''
-startdir='20210725'
+# startdir='20210725'
 # enddir='20210727'
 if startdir == '':
 	trip = 1
@@ -76,11 +76,11 @@ for folder in sorted(folderlist):
 	if enddir != '':
 		if enddir in folder:
 			trip = 0
-skipfirst = 0 # Note: this already excludes folders containing files with 'KSPS' in the filenames
+skipfirst = 3 # Note: this already excludes folders containing files with 'KSPS' in the filenames
 for i, subdir in work_array:
 	print(subdir)
 	# try:
-	run.runset(subdir='kiddata/'+subdir+'/',ext=ext,skipfirst=skipfirst)
+	run.runset(subdir='kiddata/'+subdir+'/',ext=ext,skipfirst=skipfirst,doswp=False)
 	# except:
 	# 	continue
 

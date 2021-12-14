@@ -26,6 +26,7 @@ import time
 import emcee
 import corner
 import gc
+import timeit
 
 from gbreduce_functions import *
 from gbreduce_read import *
@@ -242,7 +243,7 @@ class gbreduce:
 		return
 
 
-	def runset(self, subdir='',ext='',skipfirst=0):
+	def runset(self, subdir='',ext='',skipfirst=0,doswp=True):
 		folderlist = os.listdir(self.datadir+subdir)
 		todolist = []
 		for folder in folderlist:
@@ -291,13 +292,14 @@ class gbreduce:
 				swpfile = 'swp'+line+'rawdata'
 				todfile = 'tod'+line+'rawdata'
 				kidparams = 'kids'+line+'list'
-				try:
+				# try:
+				if doswp:
 					swp_params = self.analyse_swp(name+line.replace('.',''),self.datadir+folder+swpfile,kidparams=self.datadir+folder+kidparams)
-					# swp_params = []
-					# print(swp_params)
-					tod_analysis = self.analyse_tod(name+line.replace('.',''),self.datadir+folder+todfile,kidparams=self.datadir+folder+kidparams,swp_params=swp_params,starttime=starttime)
-				except:
-					badrun.append(name+line)
+				else:
+					swp_params = []
+				tod_analysis = self.analyse_tod(name+line.replace('.',''),self.datadir+folder+todfile,kidparams=self.datadir+folder+kidparams,swp_params=swp_params,starttime=starttime)
+				# except:
+					# badrun.append(name+line)
 		if len(badrun) > 0:
 			print('There were some failed runs: ' + str(badrun))
 		return
@@ -634,7 +636,17 @@ class gbreduce:
 			# except:
 			datarate = self.datarate
 
+		start = time.time()
+		dataset = read_rhea_data_new(filename)
+		print(time.time() - start)
+		print(dataset[0:20])
+		exit()
+
+		start = time.time()
 		dataset = read_rhea_data(filename)
+		print(time.time() - start)
+		print(dataset[0:20])
+
 		startsync = -1
 		i=0
 		while startsync == -1:

@@ -14,7 +14,7 @@ import astropy.io.fits as fits
 import scipy.fftpack
 from scipy import signal, optimize
 import os
-from rhea_comm.packet_reader import read_file, get_length
+import packet_reader
 import time
 import datetime
 import json
@@ -27,6 +27,11 @@ import RotLog_file
 import RotLog_file_oldversion
 import pytz     ## pip install pytz
 import gc
+from itertools import compress
+from struct import pack, unpack
+import struct
+# import multiprocessing
+from numba import njit
 
 # Make sure we are using UTC!
 # mytz = pytz.timezone('UTC')             ## Set your timezone
@@ -558,11 +563,11 @@ def fetch_tempdata(indir, starttime, endtime):
 def read_rhea_header(fname):
 	time = 0
 	data = 0
-	test = read_file(fname, length = 1)
+	test = packet_reader.read_file(fname, length = 1)
 	print(test)
 	for val in test:
 		print(val)
-	# for t, n_r, s_off, d in read_file(fname, length = 1):
+	# for t, n_r, s_off, d in packet_reader.read_file(fname, length = 1):
 	# 	time = t
 	# 	data = [v for i, v in enumerate(d) if i % 2 == 0]
 	# 	pass
@@ -642,7 +647,7 @@ def read_kidslist(filename):
 	return kiddict
 
 def read_rhea_swp_data(fname, length=None, offset=0):
-	inputdata = read_file(fname, length = length, offset = offset, sync=True)
+	inputdata = packet_reader.read_file(fname, length = length, offset = offset, sync=True)
 	freqset = []
 	dataset = []
 	i = 0
@@ -671,16 +676,131 @@ def read_rhea_swp_data(fname, length=None, offset=0):
 	# We need one last dataset appending.
 	return (np.asarray(freqset,dtype=np.float64), np.asarray(dataset,dtype=np.float64))
 
+# This was running but really slow
+# def read_rhea_data(filename, length=None, offset=0):
+# 	buffsize = 4096
+# 	header = 0xff
+# 	header_sgsync = 0xaa
+# 	header_sync = 0xf5
+# 	footer = 0xee
+# 	packet_size = packet_reader.get_packet_size(filename)
+# 	buff = b''
+# 	cnt = 0
+# 	readcnt = -1
+# 	step = 1
+# 	f = open(filename, 'rb')
+# 	## HEADER
+# 	buff += f.read(buffsize*2)
+# 	inputdata = np.asarray([packet_reader.read_iq_packet(buff[0:packet_size])])
+#
+# 	## BODY
+# 	buff = b''
+# 	n_rot,sync_off,offset = packet_reader.seek_sync(f,packet_reader.read_iq_packet,packet_size,offset)
+# 	f.seek(packet_size * offset)
+# 	while True:
+# 		if type(length) == int and cnt >= length: break
+# 		if len(buff) < packet_size: buff += f.read(buffsize)
+# 		if len(buff) < packet_size: break
+# 		if buff[0] == header_sync:
+# 			n_rot, sync_off = packet_reader.read_sync_packet(buff[0:packet_size])
+# 		else:
+# 			readcnt += 1
+# 			if readcnt % step ==0:
+# 				cnt += 1
+# 				inputdata = np.concatenate((inputdata, [packet_reader.read_iq_packet(buff[0:packet_size], n_rot, sync_off)]),axis=1)
+# 		buff = buff[packet_size:]
+#
+# 	return inputdata
+
+# Currently the best solution
 def read_rhea_data(fname, length=None, offset=0):
-	inputdata = read_file(fname, length = length, offset = offset, sync=True)#,packet_size=735)
-	dataset = []
-	for datum in inputdata:
-		datum[1].insert(0,datum[0])
-		datum[1].append(datum[2])
-		datum[1].append(datum[3])
-		dataset.append(datum[1])
-		del datum
-	inputdata.close()
-	del inputdata
-	gc.collect()
-	return np.asarray(dataset,dtype=np.float64)
+	inputdata = packet_reader.read_file(fname, length = length, offset = offset, sync=True)#,packet_size=735)
+	return np.array([x for x in inputdata],dtype=np.float64)
+# This also works - but runs longer than the above.
+	# dataset = []
+	# for datum in inputdata:
+	# 	print(datum)
+	# 	exit()
+	# 	datum[1].insert(0,datum[0])
+	# 	datum[1].append(datum[2])
+	# 	datum[1].append(datum[3])
+	# 	dataset.append(datum[1])
+	# 	del datum
+	# inputdata.close()
+	# del inputdata
+	# gc.collect()
+	# return np.asarray(dataset,dtype=np.float64)
+
+def read_rhea_data_new(filename, length=None, offset=0):
+	buffsize = 4096
+	header = 0xff
+	header_sgsync = 0xaa
+	header_sync = 0xf5
+	footer = 0xee
+	packet_size = packet_reader.get_packet_size(filename)
+	buff = b''
+	cnt = 0
+	readcnt = -1
+	step = 1
+	struct_b = struct.Struct("b")
+	struct_h = struct.Struct("<H")
+	struct_i = struct.Struct(">I")
+	f = open(filename, 'rb')
+	## HEADER
+	buff += f.read(buffsize*2)
+	inputdata = np.asarray([packet_reader.read_iq_packet(buff[0:packet_size])])
+
+	## BODY
+	buff = b''
+	n_rot,sync_off,offset = packet_reader.seek_sync(f,packet_reader.read_iq_packet,packet_size,offset)
+	f.seek(packet_size * offset)
+	bytes_read = f.read()
+	rows = list(bytes_read[i:i+packet_size] for i in range(0, len(bytes_read), packet_size))
+	print(len(bytes_read))
+	numpackets = len(bytes_read)/packet_size
+	numvals = (packet_size - 7) / 7
+
+	# Get the first column
+	firstcol = [x[0] for x in rows]
+	# Get the list of sync packets - use list comprehension
+	sync = [n for n,x in enumerate(firstcol) if x==header_sync]
+	numsync = len(sync)
+	print(numsync)
+	numdata = numpackets-numsync
+	print(numdata)
+	# Define a mask of whether they are data (True) or sync signals (False)
+	mask = [False if x==header_sync else True for x in firstcol]
+	print(len(mask))
+	# print(mask)
+
+	# Get the sync values
+	justsync = list(compress(rows, [not x for x in mask]))
+	n_rot = [(struct_b.unpack(x[1:2])[0] << 32) + struct_i.unpack(x[2:6])[0] for x in justsync]
+	sync_off = [(struct_b.unpack(x[6:7])[0] << 48) + (struct_h.unpack(x[7:9])[0] << 32) + struct_i.unpack(x[9:13])[0] for x in justsync]
+	del justsync
+
+	# Now look at the data
+	justdata = list(compress(rows, mask))
+	data_out = np.zeros((int(numdata), int(numvals)+3))
+	# Time
+	data_out[:,0] = [(struct_b.unpack(x[1:2])[0] << 32) + struct_i.unpack(x[2:6])[0] for x in justdata]
+	# Copy over the sync signals
+	for i in range(0,len(sync)-1):
+		data_out[sync[i]:sync[i+1],-2] = n_rot[i]
+		data_out[sync[i]:sync[i+1],-1] = sync_off[i]
+	print(numvals)
+	# KIDs data
+	for i in range(int(numvals)):
+		print(i)
+		firstcol = [x[6+7*i:7+7*i] for x in rows]
+		secondcol = [x[7+7*i:9+7*i] for x in rows]
+		thirdcol = [x[9+7*i:13+7*i] for x in rows]
+		# firstcol = struct_b.unpack(firstcol << 48)[0]
+		# secondcol = struct_h.unpack(firstcol << 32)[0]
+		# thirdcol = struct_i.unpack(firstcol)[0]
+		#
+		# data_out[:,i+1] = firstcol + secondcol + thirdcol
+
+		data_out[:,i+1] = [(struct_b.unpack(x[6+7*i:7+7*i])[0] << 48) + (struct_h.unpack(x[7+7*i:9+7*i])[0] << 32) + struct_i.unpack(x[9+7*i:13+7*i])[0] for x in justdata]
+
+	return data_out
